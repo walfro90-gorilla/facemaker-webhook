@@ -1,8 +1,8 @@
-const express = require('express');
-const app = express();
-app.use(express.json());
+export default function handler(req, res) {
+  if (req.method !== 'POST') {
+    return res.status(405).json({ error: 'Método no permitido' });
+  }
 
-app.post('/webhook', (req, res) => {
   const mensaje = (req.body.mensaje || "").toLowerCase();
 
   const telefono = mensaje.match(/\b\d{10}\b/)?.[0] || "";
@@ -21,9 +21,5 @@ app.post('/webhook', (req, res) => {
   const productos = ["aumento mamario", "botox", "láser", "rinoplastia", "suero", "emerald", "cirugía", "rejuvenecimiento"];
   const producto = productos.find(p => mensaje.includes(p)) || "";
 
-  res.json({ intencion, telefono, fecha, hora, producto });
-});
-
-app.listen(3000, () => {
-  console.log("Servidor en puerto 3000");
-});
+  res.status(200).json({ intencion, telefono, fecha, hora, producto });
+}
