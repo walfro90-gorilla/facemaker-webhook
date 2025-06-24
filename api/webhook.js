@@ -121,9 +121,21 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
     emergencia: "ATTEMPTED_TO_CONTACT"
   };
   const hs_lead_status = leadstatusMap[intencion] || "NEW";
-
   try {
-    console.log('🔍 Buscando contacto existente...', email);    // 🔍 Buscar contacto existente por email
+    console.log('🔍 Buscando contacto existente...', email);
+    
+    // 🔐 Verificar que el token de HubSpot esté configurado
+    if (!process.env.HUBSPOT_TOKEN || process.env.HUBSPOT_TOKEN === 'your_hubspot_token_here') {
+      console.log('❌ Token de HubSpot no configurado en Vercel');
+      return { 
+        hubspotContactId: null, 
+        leadstatus: "error - token no configurado",
+        error: "HUBSPOT_TOKEN no está configurado en las variables de entorno",
+        action: "failed"
+      };
+    }
+
+    // 🔍 Buscar contacto existente por email
     const searchResponse = await hubspot.crm.contacts.searchApi.doSearch({
       filterGroups: [{ 
         filters: [{ 
@@ -136,7 +148,14 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
       limit: 1
     });
 
-    const existing = searchResponse.body.results[0];
+    console.log('📊 Respuesta de búsqueda HubSpot:', {
+      status: searchResponse?.status,
+      hasBody: !!searchResponse?.body,
+      hasResults: !!searchResponse?.body?.results,
+      resultsLength: searchResponse?.body?.results?.length || 0
+    });
+
+    const existing = searchResponse?.body?.results?.[0];
 
     if (existing) {
       console.log('✅ Contacto existente encontrado:', existing.id);
@@ -144,15 +163,9 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
       const updateProperties = {
         hs_lead_status
       };
-      
-      // Solo actualizar teléfono si es válido
+        // Solo actualizar teléfono si es válido
       if (telefono && telefono.length >= 10) {
         updateProperties.phone = telefono;
-      }
-      
-      // Agregar producto en las notas si existe
-      if (producto) {
-        updateProperties.notes_last_contacted = `Interés actualizado: ${producto} - ${new Date().toLocaleDateString()}`;
       }
 
       await hubspot.crm.contacts.basicApi.update(existing.id, {
@@ -174,23 +187,18 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
         lifecyclestage: "lead",
         hs_lead_status
       };
-      
-      // Solo agregar teléfono si es válido
+        // Solo agregar teléfono si es válido
       if (telefono && telefono.length >= 10) {
         createProperties.phone = telefono;
-      }
-      
-      // Agregar producto en las notas si existe
-      if (producto) {
-        createProperties.notes_last_contacted = `Primer interés: ${producto} - ${new Date().toLocaleDateString()}`;
-      }
+      }console.log('📝 Propiedades para crear contacto:', createProperties);
 
       const response = await hubspot.crm.contacts.basicApi.create({
         properties: createProperties
       });
-        console.log('✅ Nuevo contacto creado:', response.id);
+
+      console.log('✅ Nuevo contacto creado:', response?.body?.id || response?.id);
       return { 
-        hubspotContactId: response.id, 
+        hubspotContactId: response?.body?.id || response?.id, 
         leadstatus: hs_lead_status,
         action: "created",
         email
@@ -198,14 +206,29 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
     }
   } catch (err) {
     console.error('❌ Error con HubSpot:', err.message);
-    console.error('📝 Detalles del error:', err.response?.body || err);
+    console.error('📝 Detalles del error:', {
+      message: err.message,
+      status: err.response?.status,
+      statusText: err.response?.statusText,
+      body: err.response?.body,
+      code: err.code
+    });
     
-    return { 
-      hubspotContactId: null, 
+    // 🔍 Información adicional para debugging
+    const errorDetails = {
+      hubspotContactId: null,
       leadstatus: "error",
       error: err.message,
-      action: "failed"
+      action: "failed",
+      debug: {
+        hasToken: !!process.env.HUBSPOT_TOKEN,
+        tokenLength: process.env.HUBSPOT_TOKEN?.length || 0,
+        errorType: err.constructor.name,
+        httpStatus: err.response?.status
+      }
     };
+    
+    return errorDetails;
   }
 }
 
