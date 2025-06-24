@@ -112,20 +112,18 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
   }
 
   const email = `${psid}@facemaker.chat`;
-  
-  // 📊 Mapeo inteligente de leadstatus
+    // 📊 Mapeo inteligente usando valores estándar de HubSpot
   const leadstatusMap = {
-    agendar_cita: "espera cita",
-    pedir_informacion: "informado", 
-    realizar_pago: "listo para pagar",
-    cancelar: "cancelacion",
-    emergencia: "urgente"
+    agendar_cita: "NEW",
+    pedir_informacion: "OPEN", 
+    realizar_pago: "CONNECTED",
+    cancelar: "UNQUALIFIED",
+    emergencia: "ATTEMPTED_TO_CONTACT"
   };
-  const leadstatus = leadstatusMap[intencion] || "nuevo lead";
+  const hs_lead_status = leadstatusMap[intencion] || "NEW";
 
   try {
-    console.log('🔍 Buscando contacto existente...', email);
-      // 🔍 Buscar contacto existente por email
+    console.log('🔍 Buscando contacto existente...', email);    // 🔍 Buscar contacto existente por email
     const searchResponse = await hubspot.crm.contacts.searchApi.doSearch({
       filterGroups: [{ 
         filters: [{ 
@@ -134,19 +132,17 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
           value: email 
         }] 
       }],
-      properties: ["email", "firstname", "phone", "leadstatus", "lifecyclestage"],
+      properties: ["email", "firstname", "phone", "hs_lead_status", "lifecyclestage"],
       limit: 1
     });
 
-    const existing = searchResponse?.body?.results?.[0];
+    const existing = searchResponse.body.results[0];
 
     if (existing) {
       console.log('✅ Contacto existente encontrado:', existing.id);
-      
-      // 📝 Actualizar contacto existente
+        // 📝 Actualizar contacto existente (solo propiedades válidas)
       const updateProperties = {
-        leadstatus,
-        lastmodifieddate: new Date().toISOString()
+        hs_lead_status
       };
       
       // Solo actualizar teléfono si es válido
@@ -154,33 +150,29 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
         updateProperties.phone = telefono;
       }
       
-      // Agregar producto como nota si existe
+      // Agregar producto en las notas si existe
       if (producto) {
-        updateProperties.hs_analytics_source_data_1 = `Interés: ${producto}`;
+        updateProperties.notes_last_contacted = `Interés actualizado: ${producto} - ${new Date().toLocaleDateString()}`;
       }
 
       await hubspot.crm.contacts.basicApi.update(existing.id, {
         properties: updateProperties
       });
-      
-      console.log('✅ Contacto actualizado exitosamente');
+        console.log('✅ Contacto actualizado exitosamente');
       return { 
         hubspotContactId: existing.id, 
-        leadstatus, 
+        leadstatus: hs_lead_status, 
         action: "updated",
         email 
       };
     } else {
       console.log('➕ Creando nuevo contacto...');
-      
-      // ➕ Crear nuevo contacto
+        // ➕ Crear nuevo contacto (solo propiedades válidas)
       const createProperties = {
         email,
         firstname: nombre || "Usuario Messenger",
         lifecyclestage: "lead",
-        leadstatus,
-        hs_lead_status: leadstatus,
-        createdate: new Date().toISOString()
+        hs_lead_status
       };
       
       // Solo agregar teléfono si es válido
@@ -188,19 +180,18 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
         createProperties.phone = telefono;
       }
       
-      // Agregar producto como fuente si existe
+      // Agregar producto en las notas si existe
       if (producto) {
-        createProperties.hs_analytics_source_data_1 = `Primer interés: ${producto}`;
+        createProperties.notes_last_contacted = `Primer interés: ${producto} - ${new Date().toLocaleDateString()}`;
       }
 
       const response = await hubspot.crm.contacts.basicApi.create({
         properties: createProperties
       });
-      
-      console.log('✅ Nuevo contacto creado:', response.id);
+        console.log('✅ Nuevo contacto creado:', response.id);
       return { 
         hubspotContactId: response.id, 
-        leadstatus,
+        leadstatus: hs_lead_status,
         action: "created",
         email
       };
