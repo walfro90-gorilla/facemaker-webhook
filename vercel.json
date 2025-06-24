@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "name": "webhook-inteligente",
+  "builds": [
+    {
+      "src": "api/webhook.js",
+      "use": "@vercel/node"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/webhook",
+      "dest": "/api/webhook.js"
+    }
+  ],
+  "env": {
+    "HUBSPOT_TOKEN": "@hubspot_token"
+  }
+}
