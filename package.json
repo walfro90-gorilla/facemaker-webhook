@@ -3,13 +3,14 @@
   "version": "2.1.0",
   "description": "🚀 Webhook inteligente para detección de intenciones con integración HubSpot",
   "main": "api/webhook.js",
-  "type": "module",
-  "scripts": {
+  "type": "module",  "scripts": {
     "start": "node api/webhook.js",
     "dev": "nodemon api/webhook.js",
     "test": "node test/test-webhook.js",
     "test:hubspot": "node test/test-hubspot.js",
-    "test:parsing": "node test/test-parsing.js"
+    "test:parsing": "node test/test-parsing.js",
+    "test:super": "node test-super-completo.js",
+    "test:all": "node test-super-completo.js"
   },
   "keywords": [
     "webhook",
