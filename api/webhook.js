@@ -1,6 +1,10 @@
 
 // 🚀 Webhook Inteligente con HubSpot Integration
-const { Client } = require('@hubspot/api-client');
+import { Client } from '@hubspot/api-client';
+import dotenv from 'dotenv';
+
+// 🔧 Cargar variables de entorno
+dotenv.config();
 
 // 🔧 Inicializar HubSpot Client
 const hubspot = new Client({ 
