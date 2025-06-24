@@ -125,8 +125,7 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
 
   try {
     console.log('🔍 Buscando contacto existente...', email);
-    
-    // 🔍 Buscar contacto existente por email
+      // 🔍 Buscar contacto existente por email
     const searchResponse = await hubspot.crm.contacts.searchApi.doSearch({
       filterGroups: [{ 
         filters: [{ 
@@ -139,7 +138,7 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
       limit: 1
     });
 
-    const existing = searchResponse.body.results[0];
+    const existing = searchResponse?.body?.results?.[0];
 
     if (existing) {
       console.log('✅ Contacto existente encontrado:', existing.id);
