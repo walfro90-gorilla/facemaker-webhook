@@ -1,0 +1,44 @@
+# 🔐 Variables de entorno (secretos)
+.env
+.env.local
+.env.production
+
+# 📦 Node modules
+node_modules/
+
+# 📝 Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# 🗂️ Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# 💾 Coverage directory used by tools like istanbul
+coverage/
+
+# 🔧 Build outputs
+.next/
+dist/
+build/
+
+# 🎯 Vercel
+.vercel
+
+# 💻 IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 🍎 macOS
+.DS_Store
+
+# 🪟 Windows
+Thumbs.db
+ehthumbs.db

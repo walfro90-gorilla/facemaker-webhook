@@ -1,0 +1,34 @@
+{
+  "name": "webhook-inteligente",
+  "version": "2.1.0",
+  "description": "🚀 Webhook inteligente para detección de intenciones con integración HubSpot",
+  "main": "api/webhook.js",
+  "type": "module",
+  "scripts": {
+    "start": "node api/webhook.js",
+    "dev": "nodemon api/webhook.js",
+    "test": "node test/test-webhook.js",
+    "test:hubspot": "node test/test-hubspot.js",
+    "test:parsing": "node test/test-parsing.js"
+  },
+  "keywords": [
+    "webhook",
+    "chatbot",
+    "manychat",
+    "hubspot",
+    "nlp",
+    "intent-detection"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@hubspot/api-client": "^11.2.0",
+    "dotenv": "^16.5.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

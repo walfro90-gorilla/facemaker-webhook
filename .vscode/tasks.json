@@ -1,0 +1,16 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Probar Webhook",
+			"type": "shell",
+			"command": "node",
+			"args": [
+				"test/test-webhook.js"
+			],
+			"group": "test",
+			"isBackground": false,
+			"problemMatcher": []
+		}
+	]
+}
