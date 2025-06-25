@@ -10,6 +10,7 @@ const hubspot = new Client({
   accessToken: process.env.HUBSPOT_TOKEN || 'your_hubspot_token_here'
 });
 
+
 // 📝 Función súper mejorada para parsear mensajes con IA avanzada
 function parseMensaje(mensaje) {
   console.log('📥 Iniciando parsing súper inteligente:', mensaje);
