@@ -89,6 +89,10 @@ function parseMensaje(mensaje) {
 
   // 🎯 Detector de intenciones súper inteligente con scoring avanzado
   const intencionesMap = {
+    cancelar: {
+      keywords: ['cancelar', 'anular', 'no puedo ir', 'cambiar fecha', 'suspender', 'posponer', 'cancela', 'mejor cancela', 'mejor cancelar', 'mejor anula', 'mejor suspende'],
+      weight: 2.0 // Prioridad máxima
+    },
     agendar_cita: {
       keywords: ['cita', 'agendar', 'apartar', 'reservar', 'programar', 'consulta', 'appointment', 'agenda', 'cuando', 'disponible'],
       weight: 1.0
@@ -101,10 +105,6 @@ function parseMensaje(mensaje) {
       keywords: ['pagar', 'pago', 'depósito', 'apartar con', 'transferencia', 'anticipo', 'dinero', 'efectivo', 'tarjeta'],
       weight: 1.2
     },
-    cancelar: {
-      keywords: ['cancelar', 'anular', 'no puedo ir', 'cambiar fecha', 'suspender', 'posponer'],
-      weight: 1.1
-    },
     emergencia: {
       keywords: ['urgente', 'emergencia', 'dolor', 'problema', 'ayuda', 'inmediato', 'ya', 'rápido', 'pronto'],
       weight: 1.3
@@ -113,7 +113,7 @@ function parseMensaje(mensaje) {
 
   let intencion = "";
   let maxScore = 0;
-  
+  let cancelarScore = 0;
   for (const [intent, config] of Object.entries(intencionesMap)) {
     let score = 0;
     for (const keyword of config.keywords) {
@@ -124,11 +124,14 @@ function parseMensaje(mensaje) {
         score += (wordWeight * config.weight * positionWeight);
       }
     }
+    if (intent === 'cancelar') cancelarScore = score;
     if (score > maxScore) {
       maxScore = score;
       intencion = intent;
     }
   }
+  // Si hay score de cancelar, forzar cancelar aunque haya empate
+  if (cancelarScore > 0) intencion = 'cancelar';
 
   // 💉 Detector de productos/servicios súper completo
   const productosMap = {
@@ -163,6 +166,13 @@ function parseMensaje(mensaje) {
   }
 
   const resultado = { telefono, fecha, hora, intencion, producto };
+
+  // 🛠️ Edge case: Si hay producto pero no intención, default a pedir_informacion
+  if (producto && !intencion) {
+    resultado.intencion = 'pedir_informacion';
+    intencion = 'pedir_informacion';
+  }
+
   console.log('✅ Resultado parsing súper inteligente:', {
     ...resultado,
     scores: { intencionScore: maxScore, productoScore: maxProductScore },
@@ -178,14 +188,13 @@ const recentDeals = new Map();
 
 // 💼 Función para crear/actualizar deal en HubSpot
 async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, telefono }) {
-  console.log('💼 Iniciando upsert Deal HubSpot:', { psid, producto, intencion, hubspotContactId });
-  
+  console.log('💼 Iniciando upsert Deal HubSpot (solo 1 deal abierto por usuario):', { psid, producto, intencion, hubspotContactId });
   if (!hubspotContactId) {
     console.log('❌ Contact ID requerido para crear Deal');
     return { hubspotDealId: null, dealstage: "error - sin contacto", action: "failed" };
   }
 
-  // 🎯 Mapeo de productos a nombres de deals
+  // Mapeos
   const productoDealMap = {
     "aumento mamario": "Aumento Mamario - Consulta",
     "aumento de busto": "Aumento de Busto - Consulta", 
@@ -206,7 +215,6 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
     "cirugía": "Cirugía Estética - Consulta",
     "operación": "Cirugía Estética - Consulta"
   };
-  // 📊 Mapeo de intenciones a etapas de deal (usando IDs numéricos válidos)
   const intencionStageMap = {
     agendar_cita: "1561068259",      // Cita agendada
     pedir_informacion: "1561068258",  // Información solicitada  
@@ -214,461 +222,191 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
     cancelar: "1561068264",           // Perdido
     emergencia: "1561068259"          // Cita agendada
   };
+  const stageFinales = ["1561068262", "1561068263", "1561068264"];
 
-  const dealName = productoDealMap[producto] || `Consulta Estética - ${psid}`;
-  const dealstage = intencionStageMap[intencion] || "1561068258"; // Por defecto: Información solicitada  // 🎯 Clave única mejorada para identificar deals
-  const dealIdentifier = `${psid}_${producto || 'consulta'}`;
-  const cacheKey = `${psid}_${producto || 'general'}`;
+  // Nombre dinámico
+  // Si la intención es cancelar y hay un producto en cache, usa ese producto para el dealName
+  let lastProduct = producto;
+  if (intencion === 'cancelar') {
+    const cached = recentDeals.get(psid);
+    if (!producto && cached && cached.producto) {
+      lastProduct = cached.producto;
+    }
+  }
+  const dealName = `${productoDealMap[lastProduct] || lastProduct || "Oportunidad Messenger"} [${psid}]`;
+  const dealstage = intencionStageMap[intencion] || "1561068258";
 
-  try {
-    console.log('🔍 Iniciando búsqueda avanzada de deal:', { 
-      psid, 
-      producto, 
-      dealIdentifier,
-      cacheKey,
-      timestamp: new Date().toISOString() 
-    });
-    
-    // 🚀 BÚSQUEDA 0: Cache temporal (deals recién creados) - Optimizada
-    const cachedDeal = recentDeals.get(cacheKey);    
-    if (cachedDeal && Date.now() - cachedDeal.timestamp < 300000) { // 5 minutos
-      console.log('⚡ Deal encontrado en cache temporal:', {
-        dealId: cachedDeal.dealId,
-        dealName: cachedDeal.dealName,
-        cacheAge: Math.floor((Date.now() - cachedDeal.timestamp) / 1000) + 's',
-        producto: cachedDeal.producto
-      });
-      
-      // ⚡ Verificación de cambio de intención antes de actualizar
-      const currentStage = dealstage;
-      const willUpdate = cachedDeal.lastStage !== currentStage;
-      
-      console.log('🔍 Verificando si necesita actualización:', {
-        cacheStage: cachedDeal.lastStage,
-        newStage: currentStage,
-        needsUpdate: willUpdate
-      });
-      
-      if (willUpdate) {
-        console.log('🔄 Actualizando deal desde cache con nueva intención:', {
-          anterior: cachedDeal.lastStage,
-          nueva: currentStage
-        });
-        
-        try {
-          const updateProperties = {
-            dealstage: currentStage,
-            hs_lastmodifieddate: new Date().toISOString()
-          };
-
-          await hubspot.crm.deals.basicApi.update(cachedDeal.dealId, {
-            properties: updateProperties
-          });
-          
-          // Actualizar cache con nueva etapa
-          cachedDeal.lastStage = currentStage;
-          cachedDeal.timestamp = Date.now(); // Renovar TTL
-          recentDeals.set(cacheKey, cachedDeal);
-
-          console.log('✅ Deal actualizado desde cache con nueva etapa');
-          return { 
-            hubspotDealId: cachedDeal.dealId, 
-            dealstage: currentStage,
-            action: "updated_from_cache",
-            dealName: cachedDeal.dealName,
-            cacheHit: true,
-            stageChanged: true,
-            previousStage: cachedDeal.lastStage
-          };
-        } catch (updateError) {
-          console.error('⚠️ Error actualizando deal desde cache:', updateError.message);
-          // Si falla la actualización, continuar con búsqueda normal
-        }
-      } else {
-        console.log('➡️ Deal en cache sin cambios - retornando info existente');
-        return { 
-          hubspotDealId: cachedDeal.dealId, 
-          dealstage: currentStage,
-          action: "found_in_cache",
-          dealName: cachedDeal.dealName,
-          cacheHit: true,
-          stageChanged: false
+  // 1. Buscar en cache local primero
+  let cached = recentDeals.get(psid);
+  if (cached) {
+    if (!stageFinales.includes(cached.lastStage)) {
+      console.log('⚡ Deal ABIERTO encontrado en cache local, solo se actualizará:', cached);
+      try {
+        const updateProperties = {
+          dealname: dealName,
+          dealstage,
+          hs_lastmodifieddate: new Date().toISOString(),
+          manychat_psid: psid
         };
-      }
-    }
-    // 🎯 ESTRATEGIA MÚLTIPLE DE BÚSQUEDA SÚPER ROBUSTA
-    let existingDeal = null;
-    const searchStrategies = []; // Para tracking de estrategias usadas
-
-    // 1️⃣ BÚSQUEDA PRIMARIA: Por PSID + producto en nombre (más precisa)
-    console.log('🔍 Estrategia 1: Búsqueda por PSID+producto');
-    
-    try {
-      const searchByPsidProduct = await hubspot.crm.deals.searchApi.doSearch({
-        filterGroups: [{ 
-          filters: [
-            { 
-              propertyName: "dealname", 
-              operator: "CONTAINS_TOKEN", 
-              value: psid 
-            },
-            producto ? { 
-              propertyName: "dealname", 
-              operator: "CONTAINS_TOKEN", 
-              value: producto 
-            } : null
-          ].filter(Boolean) // Remover filtros null
-        }],
-        properties: ["dealname", "dealstage", "amount", "closedate", "createdate"],
-        limit: 10,
-        sorts: [{ propertyName: "createdate", direction: "DESCENDING" }] // Más recientes primero
-      });
-
-      if (searchByPsidProduct?.body?.results?.length > 0) {
-        console.log('📋 Estrategia 1 - Deals encontrados:', searchByPsidProduct.body.results.map(d => ({
-          id: d.id,
-          name: d.properties.dealname,
-          stage: d.properties.dealstage,
-          created: d.properties.createdate
-        })));
-
-        // Buscar coincidencia exacta con PSID y producto
-        existingDeal = searchByPsidProduct.body.results.find(deal => {
-          const dealName = deal.properties.dealname.toLowerCase();
-          const psidMatch = dealName.includes(psid.toLowerCase());
-          const productMatch = !producto || dealName.includes(producto.toLowerCase());
-          
-          console.log(`🔍 Evaluando deal "${deal.properties.dealname}":`, {
-            psidMatch,
-            productMatch,
-            shouldMatch: psidMatch && productMatch
-          });
-          
-          return psidMatch && productMatch;
+        // Si la intención es cancelar, solo cambia el stage y nombre
+        const updateResult = await hubspot.crm.deals.basicApi.update(cached.dealId, { properties: updateProperties });
+        console.log('📝 Deal actualizado (cache):', JSON.stringify(updateResult?.body || updateResult, null, 2));
+        recentDeals.set(psid, {
+          dealId: cached.dealId,
+          dealName,
+          lastStage: dealstage,
+          timestamp: Date.now(),
+          producto,
+          psid
         });
-
-        if (existingDeal) {
-          console.log('✅ Estrategia 1 exitosa - Deal encontrado:', existingDeal.id);
-          searchStrategies.push('psid_product_exact');
+        // Si se cerró el deal, limpiar cache
+        if (intencion === 'cancelar' && dealstage === '1561068264') {
+          recentDeals.delete(psid);
         }
+        return {
+          hubspotDealId: cached.dealId,
+          dealstage,
+          action: intencion === 'cancelar' ? 'closed-cache' : 'updated-cache',
+          dealName,
+          stageChanged: true,
+          previousStage: cached.lastStage
+        };
+      } catch (err) {
+        console.error('❌ Error actualizando deal desde cache, se intentará buscar en HubSpot:', err.message);
       }
-    } catch (searchError) {
-      console.error('⚠️ Error en estrategia 1:', searchError.message);
-    }    // 2️⃣ BÚSQUEDA SECUNDARIA: Por formato exacto del deal name
-    if (!existingDeal && producto) {
-      console.log('🔍 Estrategia 2: Por formato exacto de nombre');
-      
-      try {
-        const exactDealName = `${productoDealMap[producto] || producto} [${psid}]`;
-        const searchByExactName = await hubspot.crm.deals.searchApi.doSearch({
-          filterGroups: [{ 
-            filters: [{ 
-              propertyName: "dealname", 
-              operator: "EQ", 
-              value: exactDealName 
-            }] 
-          }],
-          properties: ["dealname", "dealstage", "amount", "closedate", "createdate"],
-          limit: 5
-        });
-
-        if (searchByExactName?.body?.results?.length > 0) {
-          existingDeal = searchByExactName.body.results[0];
-          console.log('✅ Estrategia 2 exitosa - Deal por nombre exacto:', existingDeal.id);
-          searchStrategies.push('exact_name');
-        }
-      } catch (searchError) {
-        console.error('⚠️ Error en estrategia 2:', searchError.message);
-      }
+    } else {
+      console.log('🟠 El último deal en cache está CERRADO. Se elimina del cache para permitir crear uno nuevo.');
+      recentDeals.delete(psid);
+      cached = null;
     }
+  }
 
-    // 3️⃣ BÚSQUEDA TERCIARIA: Por PSID únicamente (fallback más amplio)
+  // 2. Si no está en cache o el último está cerrado, esperar 3s antes de buscar en HubSpot
+  if (!cached || (cached && stageFinales.includes(cached.lastStage))) {
+    console.log('⏳ Esperando 3s para permitir indexado de HubSpot...');
+    await new Promise(resolve => setTimeout(resolve, 3000));
+  }
+
+  // 3. Buscar en HubSpot deals abiertos
+  try {
+    console.log('🔍 Buscando deals abiertos con manychat_psid:', psid);
+    const searchOpenDeals = await hubspot.crm.deals.searchApi.doSearch({
+      filterGroups: [{
+        filters: [
+          { propertyName: "manychat_psid", operator: "EQ", value: psid },
+          { propertyName: "dealstage", operator: "NOT_IN", values: stageFinales }
+        ]
+      }],
+      properties: ["dealname", "dealstage", "amount", "closedate", "manychat_psid"],
+      limit: 5
+    });
+    console.log('🔎 Resultado deals encontrados:', JSON.stringify(searchOpenDeals?.body?.results, null, 2));
+    let existingDeal = searchOpenDeals?.body?.results?.[0] || null;
+
+    // 🔍 Si no se encontró deal abierto, buscar por nombre de deal como fallback
     if (!existingDeal) {
-      console.log('🔍 Estrategia 3: Por PSID únicamente (fallback)');
-      
-      try {
-        const searchByPsidOnly = await hubspot.crm.deals.searchApi.doSearch({
-          filterGroups: [{ 
-            filters: [{ 
-              propertyName: "dealname", 
-              operator: "CONTAINS_TOKEN", 
-              value: psid 
-            }] 
-          }],
-          properties: ["dealname", "dealstage", "amount", "closedate", "createdate"],
-          limit: 20,
-          sorts: [{ propertyName: "hs_lastmodifieddate", direction: "DESCENDING" }]
-        });
+      const fallbackDealName = `${productoDealMap[producto] || producto || "Oportunidad Messenger"} [${psid}]`;
+      console.log('🔍 Fallback: buscando deal por nombre:', fallbackDealName);
+      const searchByName = await hubspot.crm.deals.searchApi.doSearch({
+        filterGroups: [{
+          filters: [
+            { propertyName: "dealname", operator: "EQ", value: fallbackDealName },
+            { propertyName: "dealstage", operator: "NOT_IN", values: stageFinales }
+          ]
+        }],
+        properties: ["dealname", "dealstage", "amount", "closedate", "manychat_psid"],
+        limit: 1
+      });
+      console.log('🔎 Resultado deals encontrados por nombre:', JSON.stringify(searchByName?.body?.results, null, 2));
+      existingDeal = searchByName?.body?.results?.[0] || null;
+    }
 
-        if (searchByPsidOnly?.body?.results?.length > 0) {
-          console.log('📋 Estrategia 3 - Deals con PSID encontrados:', 
-            searchByPsidOnly.body.results.map(d => d.properties.dealname)
-          );
-
-          // Priorizar deals con producto similar si no hay coincidencia exacta
-          existingDeal = searchByPsidOnly.body.results.find(deal => {
-            const dealName = deal.properties.dealname.toLowerCase();
-            return producto ? dealName.includes(producto.toLowerCase()) : true;
-          }) || searchByPsidOnly.body.results[0]; // Tomar el más reciente si no hay producto
-
-          if (existingDeal) {
-            console.log('✅ Estrategia 3 exitosa - Deal por PSID fallback:', existingDeal.id);
-            searchStrategies.push('psid_fallback');
-          }
-        }
-      } catch (searchError) {
-        console.error('⚠️ Error en estrategia 3:', searchError.message);
-      }
-    }    console.log('📊 Resultado búsqueda súper robusta:', {
-      dealEncontrado: !!existingDeal,
-      dealId: existingDeal?.id || null,
-      dealName: existingDeal?.properties?.dealname || null,
-      dealStage: existingDeal?.properties?.dealstage || null,
-      strategiesUsed: searchStrategies,
-      totalStrategies: 3,
-      cacheChecked: true,
-      timestamp: new Date().toISOString()
-    });// 🎯 DECISIÓN INTELIGENTE: Actualizar vs Crear
     if (existingDeal) {
-      console.log('🔄 ACTUALIZANDO deal existente:', existingDeal.id);
-      
-      const currentStage = existingDeal.properties.dealstage;
-      const newStage = dealstage;
-      
-      // � Lógica inteligente de actualización de etapas
-      const stageHierarchy = {
-        "1561068258": 1, // Información solicitada
-        "1561068259": 2, // Cita agendada  
-        "1561068260": 3, // Propuesta enviada
-        "1561068261": 4, // Listo para pagar
-        "1561068262": 5, // Cerrado ganado
-        "1561068263": 6, // Cerrado perdido
-        "1561068264": 0  // Cancelado/Perdido
-      };
-      
-      const currentLevel = stageHierarchy[currentStage] || 1;
-      const newLevel = stageHierarchy[newStage] || 1;
-      
-      // Solo actualizar si la nueva etapa es igual o superior (progreso del cliente)
-      const shouldUpdateStage = newLevel >= currentLevel;
-      
-      console.log('📊 Análisis de etapas:', {
-        currentStage,
-        newStage,
-        currentLevel,
-        newLevel,
-        shouldUpdateStage
-      });
-
-      // 📝 Propiedades a actualizar
+      console.log('⚡ Deal ABIERTO encontrado en HubSpot, solo se actualizará:', existingDeal.id);
       const updateProperties = {
-        hs_lastmodifieddate: new Date().toISOString()
-      };
-
-      // Solo actualizar etapa si es progreso
-      if (shouldUpdateStage) {
-        updateProperties.dealstage = newStage;
-        console.log('⬆️ Actualizando etapa del deal:', currentStage, '→', newStage);
-      } else {
-        console.log('➡️ Manteniendo etapa actual (no retroceder):', currentStage);
-      }
-
-      // Actualizar monto si se detectó intención de pago
-      if (intencion === 'realizar_pago' && existingDeal.properties.amount === '0') {
-        updateProperties.amount = '1000'; // Monto estimado por defecto
-        console.log('💰 Agregando monto estimado al deal');
-      }
-
-      await hubspot.crm.deals.basicApi.update(existingDeal.id, {
-        properties: updateProperties
-      });
-
-      // 📊 Actualizar cache con nueva información
-      const updatedCacheEntry = {
-        dealId: existingDeal.id,
-        dealName: existingDeal.properties.dealname,
-        lastStage: shouldUpdateStage ? newStage : currentStage,
-        timestamp: Date.now(),
-        producto: producto,
-        psid: psid
-      };
-      recentDeals.set(cacheKey, updatedCacheEntry);
-
-      console.log('✅ Deal actualizado súper exitosamente');
-      return { 
-        hubspotDealId: existingDeal.id, 
-        dealstage: shouldUpdateStage ? newStage : currentStage,
-        action: "updated",
-        dealName: existingDeal.properties.dealname,
-        stageChanged: shouldUpdateStage,
-        previousStage: currentStage,
-        updateReason: isCancellation ? 'cancellation' : (isProgression ? 'progression' : 'no_change'),
-        searchStrategies: searchStrategies,
-        amountUpdated: !!updateProperties.amount
-      };
-    } else {      console.log('➕ CREANDO nuevo deal (no existe para este cliente+producto)');
-      
-      // ➕ Crear nuevo deal con identificador único
-      const uniqueDealName = `${dealName} [${psid}]`; // Agregar PSID para unicidad
-      
-      const createProperties = {
-        dealname: uniqueDealName,
+        dealname: dealName,
         dealstage,
-        pipeline: "default",
-        amount: intencion === 'realizar_pago' ? "1000" : "0", // Monto inteligente
-        closedate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 días
-        // Agregar propiedades personalizadas si están disponibles
-        hs_createdate: new Date().toISOString()
+        hs_lastmodifieddate: new Date().toISOString(),
+        manychat_psid: psid
       };
-
-      console.log('📝 Propiedades para crear deal único:', createProperties);
-
-      const dealResponse = await hubspot.crm.deals.basicApi.create({
-        properties: createProperties
-      });      const dealId = dealResponse?.body?.id || dealResponse?.id;
-      console.log('✅ Nuevo deal creado con ID:', dealId);      // 🎯 GUARDAR EN CACHE TEMPORAL AVANZADO
-      const cacheEntry = {
-        dealId,
-        dealName: uniqueDealName,
+      if (intencion === 'realizar_pago' && (existingDeal.properties.amount === '0' || !existingDeal.properties.amount)) {
+        updateProperties.amount = '1000';
+      }
+      const updateResult = await hubspot.crm.deals.basicApi.update(existingDeal.id, { properties: updateProperties });
+      console.log('📝 Deal actualizado (HubSpot):', JSON.stringify(updateResult?.body || updateResult, null, 2));
+      recentDeals.set(psid, {
+        dealId: existingDeal.id,
+        dealName,
         lastStage: dealstage,
         timestamp: Date.now(),
-        producto: producto || 'general',
-        psid: psid,
-        created: true
-      };
-      recentDeals.set(cacheKey, cacheEntry);
-      
-      // 🧹 Limpiar cache inteligentemente (mantener solo últimas 100 entradas)
-      if (recentDeals.size > 100) {
-        const sortedEntries = Array.from(recentDeals.entries())
-          .sort(([,a], [,b]) => b.timestamp - a.timestamp)
-          .slice(0, 50); // Mantener solo las 50 más recientes
-        
-        recentDeals.clear();
-        sortedEntries.forEach(([key, value]) => recentDeals.set(key, value));
-        
-        console.log('🧹 Cache limpiado - mantenidas últimas 50 entradas');
-      }
-      
-      console.log('💾 Deal guardado en cache temporal súper optimizado:', {
-        cacheKey,
-        dealId,
-        cacheSize: recentDeals.size
+        producto,
+        psid
       });
-
-      // 🔗 ASOCIACIÓN MEJORADA: Deal con contacto
-      try {
-        console.log('🔗 Asociando deal con contacto...');
-        
-        // Intentar múltiples métodos de asociación para máxima compatibilidad
-        try {
-          // Método v4 (más reciente)
-          await hubspot.crm.associations.v4.basicApi.create(
-            'deals',
-            dealId,
-            'contacts',
-            hubspotContactId,
-            [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 3 }]
-          );
-          console.log('✅ Deal asociado con contacto (método v4)');
-        } catch (v4Error) {
-          console.log('⚠️ Método v4 falló, intentando método alternativo...');
-          
-          // Método alternativo (batch)
-          await hubspot.crm.associations.batchApi.create('deals', 'contacts', {
-            inputs: [{
-              from: { id: dealId },
-              to: { id: hubspotContactId },
-              type: 'deal_to_contact'
-            }]
-          });
-          console.log('✅ Deal asociado con contacto (método batch)');
-        }
-      } catch (assocError) {
-        console.error('⚠️ Error en asociación final:', assocError.message);
-        // No fallar completamente - el deal ya está creado
-        console.log('ℹ️ Deal creado exitosamente, asociación pendiente');
+      // Si se cerró el deal, limpiar cache
+      if (intencion === 'cancelar' && dealstage === '1561068264') {
+        recentDeals.delete(psid);
       }
-
-      return { 
-        hubspotDealId: dealId, 
+      return {
+        hubspotDealId: existingDeal.id,
+        dealstage,
+        action: intencion === 'cancelar' ? 'closed' : 'updated',
+        dealName,
+        stageChanged: true,
+        previousStage: existingDeal.properties.dealstage
+      };
+    } else if (intencion === 'cancelar') {
+      // No hay deal abierto, pero se pidió cancelar: no hacer nada
+      return {
+        hubspotDealId: null,
+        dealstage: '1561068264',
+        action: 'no-open-deal-to-close',
+        dealName: null,
+        stageChanged: false
+      };
+    } else {
+      console.log('🟢 No hay deal abierto en cache ni en HubSpot. Se creará uno nuevo.');
+      const createProperties = {
+        dealname: dealName,
+        dealstage,
+        pipeline: "default",
+        amount: intencion === 'realizar_pago' ? "1000" : "0",
+        closedate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        hs_createdate: new Date().toISOString(),
+        manychat_psid: psid
+      };
+      const dealResponse = await hubspot.crm.deals.basicApi.create({ properties: createProperties });
+      const dealId = dealResponse?.body?.id || dealResponse?.id;
+      console.log('🆕 Deal creado:', JSON.stringify(dealResponse?.body || dealResponse, null, 2));
+      recentDeals.set(psid, {
+        dealId,
+        dealName,
+        lastStage: dealstage,
+        timestamp: Date.now(),
+        producto,
+        psid
+      });
+      try {
+        await hubspot.crm.associations.v4.basicApi.create(
+          'deals',
+          dealId,
+          'contacts',
+          hubspotContactId,
+          [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 3 }]
+        );
+      } catch (e) {
+        console.error('⚠️ Error asociando contacto al deal:', e.message);
+      }
+      return {
+        hubspotDealId: dealId,
         dealstage,
         action: "created",
-        dealName: uniqueDealName,
+        dealName,
         isNewDeal: true
       };
-    }  } catch (err) {
-    console.error('❌ ERROR CRÍTICO SÚPER DETALLADO en Deal HubSpot:', {
-      errorMessage: err.message,
-      errorType: err.constructor.name,
-      timestamp: new Date().toISOString(),
-      context: {
-        psid,
-        producto,
-        intencion,
-        hubspotContactId,
-        dealName: productoDealMap[producto] || `Consulta Estética - ${psid}`,
-        dealstage: intencionStageMap[intencion] || "1561068258"
-      }
-    });
-    
-    console.error('📝 Stack trace completo:', err.stack);
-    
-    // 🔍 Análisis súper detallado del error HTTP
-    if (err.response) {
-      console.error('🌐 Detalles HTTP súper completos:', {
-        status: err.response.status,
-        statusText: err.response.statusText,
-        headers: err.response.headers,
-        data: err.response.data,
-        url: err.response.config?.url,
-        method: err.response.config?.method
-      });
-      
-      // 🎯 Análisis específico por tipo de error
-      if (err.response.status === 401) {
-        console.error('🔐 ERROR DE AUTENTICACIÓN: Token de HubSpot inválido o expirado');
-      } else if (err.response.status === 403) {
-        console.error('🚫 ERROR DE PERMISOS: Token no tiene permisos para deals');
-      } else if (err.response.status === 429) {
-        console.error('⏰ ERROR DE RATE LIMIT: Demasiadas peticiones a HubSpot');
-      } else if (err.response.status >= 500) {
-        console.error('🔥 ERROR DEL SERVIDOR HUBSPOT: Problema interno de HubSpot');
-      }
     }
-    
-    // 🧠 Análisis del código de error para mejor debugging
-    const errorAnalysis = {
-      isNetworkError: !err.response && (err.code === 'ENOTFOUND' || err.code === 'ECONNREFUSED'),
-      isAuthError: err.response?.status === 401,
-      isPermissionError: err.response?.status === 403,
-      isRateLimitError: err.response?.status === 429,
-      isServerError: err.response?.status >= 500,
-      isClientError: err.response?.status >= 400 && err.response?.status < 500,
-      hasValidToken: !!process.env.HUBSPOT_TOKEN && process.env.HUBSPOT_TOKEN !== 'your_hubspot_token_here'
-    };
-    
-    console.error('🧠 Análisis inteligente del error:', errorAnalysis);
-    
-    return {
-      hubspotDealId: null,
-      dealstage: "error",
-      error: err.message,
-      action: "failed",
-      errorDetails: {
-        type: err.constructor.name,
-        httpStatus: err.response?.status,
-        httpStatusText: err.response?.statusText,
-        timestamp: new Date().toISOString(),
-        context: { psid, producto, intencion, hubspotContactId },
-        analysis: errorAnalysis,
-        debugging: {
-          hasToken: !!process.env.HUBSPOT_TOKEN,
-          tokenLength: process.env.HUBSPOT_TOKEN?.length || 0,
-          tokenPreview: process.env.HUBSPOT_TOKEN ? `${process.env.HUBSPOT_TOKEN.substring(0, 8)}...` : 'No token'
-        }
-      }
-    };
+  } catch (err) {
+    console.error('❌ Error en upsertDealHubspot:', err.message);
+    return { hubspotDealId: null, dealstage: "error", action: "failed" };
   }
 }
 
@@ -885,14 +623,31 @@ export default async function handler(req, res) {
         telefono, 
         intencion, 
         producto 
-      });      // 💼 LÓGICA INTELIGENTE: Crear/actualizar deal
-      if (hubspotResult.hubspotContactId && producto) {
+      });
+      // 💼 LÓGICA INTELIGENTE: Crear/actualizar/cerrar deal
+      // 1. Si la intención es cancelar, procesar cierre aunque no haya producto
+      if (hubspotResult.hubspotContactId && intencion === 'cancelar') {
+        console.log('💼 Procesando cierre de deal por intención cancelar para:', {
+          contacto: hubspotResult.hubspotContactId,
+          intencion
+        });
+        dealResult = await upsertDealHubspot({
+          psid,
+          producto: '', // No importa el producto para cancelar
+          intencion: 'cancelar',
+          hubspotContactId: hubspotResult.hubspotContactId,
+          telefono
+        });
+        // Si el deal fue cerrado, limpiar cache
+        if (dealResult.dealstage === '1561068264') {
+          recentDeals.delete(psid);
+        }
+      } else if (hubspotResult.hubspotContactId && producto) {
         console.log('💼 Procesando deal inteligente para:', {
           contacto: hubspotResult.hubspotContactId,
           producto,
           intencion
         });
-        
         dealResult = await upsertDealHubspot({
           psid,
           producto,
@@ -900,7 +655,6 @@ export default async function handler(req, res) {
           hubspotContactId: hubspotResult.hubspotContactId,
           telefono
         });
-        
         // 📊 Log del resultado para monitoreo
         console.log('📊 Resultado del procesamiento de deal:', {
           dealId: dealResult.hubspotDealId,
@@ -908,8 +662,7 @@ export default async function handler(req, res) {
           stageChanged: dealResult.stageChanged || false,
           isNewDeal: dealResult.isNewDeal || false
         });
-        
-      } else if (!producto) {
+      } else if (!producto && intencion !== 'cancelar') {
         console.log('⚠️ Sin producto detectado - no se procesará deal');
         dealResult = {
           hubspotDealId: null,
