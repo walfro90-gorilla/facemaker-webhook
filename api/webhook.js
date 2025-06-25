@@ -86,6 +86,7 @@ function parseMensaje(mensaje) {
       break;
     }
   }
+  
 
   // 🎯 Detector de intenciones súper inteligente con scoring avanzado
   const intencionesMap = {
