@@ -12,8 +12,5 @@
       "src": "/api/webhook",
       "dest": "/api/webhook.js"
     }
-  ],
-  "env": {
-    "HUBSPOT_TOKEN": "@HUBSPOT_TOKEN"
-  }
+  ]
 }
