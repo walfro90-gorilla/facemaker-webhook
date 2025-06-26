@@ -663,7 +663,11 @@ export default async function handler(req, res) {
           producto: '', // No importa el producto para cancelar
           intencion: 'cancelar',
           hubspotContactId: hubspotResult.hubspotContactId,
-          telefono
+          telefono,
+          nombre, // <-- AGREGADO
+          fecha,
+          hora,
+          mensaje
         });
         // Si el deal fue cerrado, limpiar cache
         if (dealResult.dealstage === '1561068264') {
@@ -680,7 +684,11 @@ export default async function handler(req, res) {
           producto,
           intencion,
           hubspotContactId: hubspotResult.hubspotContactId,
-          telefono
+          telefono,
+          nombre, // <-- AGREGADO
+          fecha,
+          hora,
+          mensaje
         });
         // 📊 Log del resultado para monitoreo
         console.log('📊 Resultado del procesamiento de deal:', {
