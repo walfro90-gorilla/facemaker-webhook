@@ -185,11 +185,29 @@ function parseMensaje(mensaje) {
   return resultado;
 }
 
+// Utilidad para mapear intención a texto legible
+const intencionMap = {
+  agendar_cita: "Agendar Cita",
+  pedir_informacion: "Pedir Información",
+  realizar_pago: "Realizar Pago",
+  cancelar: "Cancelar",
+  emergencia: "Emergencia"
+};
+
+// Función para actualizar variable ManyChat solo si está vacía
+// (esto es pseudocódigo, debes implementar getManyChatVariable/setManyChatVariable según tu integración)
+async function updateManyChatVariable(psid, variable, value) {
+  const currentValue = await getManyChatVariable(psid, variable);
+  if (!currentValue) {
+    await setManyChatVariable(psid, variable, value);
+  }
+}
+
 // 🎯 Cache temporal para deals recién creados (para evitar duplicados antes de indexación)
 const recentDeals = new Map();
 
 // 💼 Función para crear/actualizar deal en HubSpot
-async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, telefono }) {
+async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, telefono, nombre, fecha, hora, mensaje }) {
   console.log('💼 Iniciando upsert Deal HubSpot (solo 1 deal abierto por usuario):', { psid, producto, intencion, hubspotContactId });
   if (!hubspotContactId) {
     console.log('❌ Contact ID requerido para crear Deal');
@@ -235,8 +253,12 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
       lastProduct = cached.producto;
     }
   }
-  const dealName = `${productoDealMap[lastProduct] || lastProduct || "Oportunidad Messenger"} [${psid}]`;
+  // NUEVA NOMENCLATURA DEL DEAL
+  const dealName = `${(lastProduct || "Servicio").charAt(0).toUpperCase() + (lastProduct || "Servicio").slice(1)} - ${nombre || "Usuario"} - ${intencionMap[intencion] || intencion}`;
   const dealstage = intencionStageMap[intencion] || "1561068258";
+
+  // Descripción completa para el asesor
+  const description = `\n🧑 Nombre: ${nombre || "No proporcionado"}\n📞 Teléfono: ${telefono || "No proporcionado"}\n🎯 Intención: ${intencionMap[intencion] || intencion}\n💉 Producto: ${lastProduct || "No detectado"}\n📅 Fecha: ${fecha || "No proporcionada"}\n🕙 Hora: ${hora || "No proporcionada"}\n🆔 PSID: ${psid}\n💬 Mensaje original: ${mensaje}\n`;
 
   // 1. Buscar en cache local primero
   let cached = recentDeals.get(psid);
@@ -248,7 +270,8 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
           dealname: dealName,
           dealstage,
           hs_lastmodifieddate: new Date().toISOString(),
-          manychat_psid: psid
+          manychat_psid: psid,
+          description
         };
         // Si la intención es cancelar, solo cambia el stage y nombre
         const updateResult = await hubspot.crm.deals.basicApi.update(cached.dealId, { properties: updateProperties });
@@ -329,7 +352,8 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
         dealname: dealName,
         dealstage,
         hs_lastmodifieddate: new Date().toISOString(),
-        manychat_psid: psid
+        manychat_psid: psid,
+        description
       };
       if (intencion === 'realizar_pago' && (existingDeal.properties.amount === '0' || !existingDeal.properties.amount)) {
         updateProperties.amount = '1000';
@@ -374,7 +398,8 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
         amount: intencion === 'realizar_pago' ? "1000" : "0",
         closedate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
         hs_createdate: new Date().toISOString(),
-        manychat_psid: psid
+        manychat_psid: psid,
+        description
       };
       const dealResponse = await hubspot.crm.deals.basicApi.create({ properties: createProperties });
       const dealId = dealResponse?.body?.id || dealResponse?.id;
@@ -722,4 +747,4 @@ export default async function handler(req, res) {
 }
 
 // Exportar la función webhook para testing
-export { handler as webhook };
+export { handler as webhook, upsertDealHubspot };
