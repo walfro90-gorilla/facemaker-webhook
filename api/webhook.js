@@ -1,28 +1,52 @@
-// 🚀 Webhook Inteligente con HubSpot Integration
-import { Client } from '@hubspot/api-client';
-import dotenv from 'dotenv';
+// =============================================
+// 🚀 WEBHOOK INTELIGENTE CON HUBSPOT INTEGRATION
+// =============================================
+// Este archivo implementa un endpoint webhook para procesar mensajes,
+// extraer información relevante (teléfono, fecha, hora, intención, producto),
+// y sincronizar contactos y deals con HubSpot de forma inteligente.
+// Incluye lógica avanzada de parsing y manejo de duplicados.
+//
+// Autor: Walfre Gorilla-Labs
+// Última actualización: 2025-06-27
+// =============================================
 
-// 🔧 Cargar variables de entorno
+
+
+
+
+// 📦 Importa el cliente oficial de HubSpot y dotenv para variables de entorno
+import { Client } from '@hubspot/api-client'; // Cliente oficial para interactuar con la API de HubSpot
+import dotenv from 'dotenv'; // Permite cargar variables de entorno desde un archivo .env
+
+// 🔧 Carga las variables de entorno desde .env
+// Necesario para obtener el token de HubSpot
 dotenv.config();
 
-// 🔧 Inicializar HubSpot Client
+// 🔧 Inicializa el cliente de HubSpot con el token de acceso
 const hubspot = new Client({ 
-  accessToken: process.env.HUBSPOT_TOKEN || 'your_hubspot_token_here'
+  accessToken: process.env.HUBSPOT_TOKEN || 'your_hubspot_token_here' // Token de autenticación para la API
 });
 
 
-// 📝 Función súper mejorada para parsear mensajes con IA avanzada
+// =====================================================
+// 📝 FUNCION PRINCIPAL DE PARSING DE MENSAJES
+// =====================================================
+// Extrae teléfono, fecha, hora, intención y producto de un mensaje de texto
+// Utiliza expresiones regulares y lógica de scoring para mayor precisión
 function parseMensaje(mensaje) {
-  console.log('📥 Iniciando parsing súper inteligente:', mensaje);
+  console.log('📥 Iniciando parsing súper inteligente:', mensaje); // Log para depuración
   
-  const texto = (mensaje || "").toLowerCase().trim();
+  // 🔍 Normaliza el mensaje a minúsculas y elimina espacios innecesarios
+  const texto = (mensaje || "").toLowerCase().trim(); // Normaliza el texto
   
+  // ⚠️ Si el mensaje está vacío, retorna valores por defecto
+  // Esto evita errores en el procesamiento posterior
   if (!texto) {
     console.log('⚠️ Mensaje vacío recibido');
     return { telefono: "", fecha: "", hora: "", intencion: "", producto: "" };
   }
 
-  // 📞 Detector de teléfonos súper robusto (múltiples patrones internacionales)
+  // 📞 Busca teléfonos en el texto usando varios patrones internacionales
   const telefonoPatterns = [
     /\b(?:\+?52\s?)?(?:1\s?)?(?:\d{3}[\s\-\(\)]?\d{3}[\s\-\(\)]?\d{4})\b/g, // México formato completo
     /\b(?:\+?52\s?)?\d{2}[\s\-]?\d{4}[\s\-]?\d{4}\b/g, // México celular
@@ -31,20 +55,22 @@ function parseMensaje(mensaje) {
     /\b\d{8,12}\b/g // Números medianos
   ];
   
+  // 📞 Busca todos los patrones de teléfono en el text
+  // o toma el número más largo encontrado (más probable que sea completo)
   let telefono = "";
   for (const pattern of telefonoPatterns) {
-    const matches = texto.match(pattern);
+    const matches = texto.match(pattern); // Busca coincidencias con el patrón actual
     if (matches) {
       // Tomar el número más largo encontrado (más probable que sea completo)
       telefono = matches
-        .map(t => t.replace(/[\s\-\(\)]/g, ''))
-        .filter(t => t.length >= 8)
-        .sort((a, b) => b.length - a.length)[0] || "";
-      if (telefono) break;
+        .map(t => t.replace(/[\s\-\(\)]/g, '')) // Elimina espacios y guiones
+        .filter(t => t.length >= 8) // Solo números con longitud válida
+        .sort((a, b) => b.length - a.length)[0] || ""; // Ordena por longitud descendente
+      if (telefono) break; // Si encuentra un teléfono válido, termina la búsqueda
     }
   }
 
-  // 📅 Detector de fechas súper inteligente
+  // 📅 Busca fechas usando palabras clave y formatos comunes
   const fechaPatterns = [
     { pattern: /\b(hoy|today)\b/i, transform: () => 'hoy' },
     { pattern: /\b(mañana|tomorrow|mañ)\b/i, transform: () => 'mañana' },
@@ -59,17 +85,19 @@ function parseMensaje(mensaje) {
     { pattern: /\b(\d{1,2})\s?(?:de|\/|\-)\s?(enero|febrero|marzo|abril|mayo|junio|julio|agosto|septiembre|octubre|noviembre|diciembre)\b/i, transform: (match) => match[0] },
     { pattern: /\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/, transform: (match) => match[0] }
   ];
-  
+
+  // 🗓️ Busca fechas en el texto usando los patrones definidos
+  // y toma la primera coincidencia encontrada
   let fecha = "";
   for (const { pattern, transform } of fechaPatterns) {
-    const match = texto.match(pattern);
+    const match = texto.match(pattern); // Busca coincidencia de fecha
     if (match) {
-      fecha = transform(match);
+      fecha = transform(match); // Aplica la transformación para obtener el valor legible
       break;
     }
   }
 
-  // 🕐 Detector de horas súper preciso
+  // 🕐 Busca horas en diferentes formatos (12/24h, con o sin am/pm)
   const horaPatterns = [
     /\b(\d{1,2}):(\d{2})\s?(am|pm|a\.?m\.?|p\.?m\.?)\b/i,
     /\b(\d{1,2})\s?(am|pm|a\.?m\.?|p\.?m\.?)\b/i,
@@ -79,24 +107,27 @@ function parseMensaje(mensaje) {
     /\b(media\s?noche|medianoche)\b/i
   ];
   
+  // 🎯 Busca la primera coincidencia de hora en el texto
+  // y toma el formato más común
   let hora = "";
   for (const pattern of horaPatterns) {
-    const match = texto.match(pattern);
+    const match = texto.match(pattern); // Busca coincidencia de hora
     if (match) {
-      hora = match[0];
+      hora = match[0]; // Toma la coincidencia encontrada
       break;
     }
   }
   
 
-  // 🎯 Detector de intenciones súper inteligente con scoring avanzado
+  // 🎯 Detecta la intención del mensaje usando keywords y un sistema de scoring
+  // Define un mapa de intenciones con palabras clave y pesos
   const intencionesMap = {
     cancelar: {
       keywords: ['cancelar', 'anular', 'no puedo ir', 'cambiar fecha', 'suspender', 'posponer', 'cancela', 'mejor cancela', 'mejor cancelar', 'mejor anula', 'mejor suspende'],
       weight: 2.0 // Prioridad máxima
     },
     agendar_cita: {
-      keywords: ['cita', 'agendar', 'apartar', 'reservar', 'programar', 'consulta', 'appointment', 'agenda', 'cuando', 'disponible'],
+      keywords: ['sita','cita', 'agendar', 'apartar', 'reservar', 'programar', 'consulta', 'appointment', 'agenda', 'cuando', 'disponible'],
       weight: 1.0
     },
     pedir_informacion: {
@@ -113,6 +144,8 @@ function parseMensaje(mensaje) {
     }
   };
 
+  // 💡 Scoring avanzado: evalúa cada intención y calcula un score basado en las keywords
+  // Itera sobre las intenciones y calcula un score basado en la presencia de keywords
   let intencion = "";
   let maxScore = 0;
   let cancelarScore = 0;
@@ -121,11 +154,12 @@ function parseMensaje(mensaje) {
     for (const keyword of config.keywords) {
       if (texto.includes(keyword)) {
         // Scoring avanzado: palabras más largas + peso específico + posición en el texto
-        const wordWeight = keyword.split(' ').length;
+        const wordWeight = keyword.split(' ').length; // Palabras compuestas valen más
         const positionWeight = texto.indexOf(keyword) < 20 ? 1.2 : 1.0; // Palabras al inicio tienen más peso
         score += (wordWeight * config.weight * positionWeight);
       }
     }
+    // 💡 Si la intención es cancelar, guarda el score para forzarla al final
     if (intent === 'cancelar') cancelarScore = score;
     if (score > maxScore) {
       maxScore = score;
@@ -135,7 +169,7 @@ function parseMensaje(mensaje) {
   // Si hay score de cancelar, forzar cancelar aunque haya empate
   if (cancelarScore > 0) intencion = 'cancelar';
 
-  // 💉 Detector de productos/servicios súper completo
+  // 💉 Detecta el producto/servicio mencionado usando un diccionario de variaciones
   const productosMap = {
     "aumento mamario": ["aumento mamario", "aumento de busto", "implantes mamarios", "busto", "senos", "pechos"],
     "botox": ["botox", "bótox", "toxina botulínica", "toxina", "botulínica"],
@@ -167,11 +201,11 @@ function parseMensaje(mensaje) {
     }
   }
 
-  const resultado = { telefono, fecha, hora, intencion, producto };
+  const resultado = { telefono, fecha, hora, intencion, producto }; // Objeto con los datos extraídos
 
-  // 🛠️ Edge case: Si hay producto pero no intención, default a pedir_informacion
+  // 🛠️ Si hay producto pero no intención, asume que pide información
   if (producto && !intencion) {
-    resultado.intencion = 'pedir_informacion';
+    resultado.intencion = 'pedir_informacion'; // Si hay producto pero no intención, asume que pide información
     intencion = 'pedir_informacion';
   }
 
@@ -180,12 +214,15 @@ function parseMensaje(mensaje) {
     scores: { intencionScore: maxScore, productoScore: maxProductScore },
     textLength: texto.length,
     processingTime: Date.now()
-  });
+  }); // Log de depuración con los resultados y métricas
   
   return resultado;
 }
 
-// Utilidad para mapear intención a texto legible
+// =====================================================
+// 🗺️ MAPEO DE INTENCIONES A TEXTO LEGIBLE
+// =====================================================
+// Utilidad para mostrar la intención en texto humano
 const intencionMap = {
   agendar_cita: "Agendar Cita",
   pedir_informacion: "Pedir Información",
@@ -194,23 +231,33 @@ const intencionMap = {
   emergencia: "Emergencia"
 };
 
-// Función para actualizar variable ManyChat solo si está vacía
-// (esto es pseudocódigo, debes implementar getManyChatVariable/setManyChatVariable según tu integración)
+// =====================================================
+// 🔄 ACTUALIZACIÓN DE VARIABLES EN MANYCHAT (PSEUDOCÓDIGO)
+// =====================================================
+// Solo actualiza la variable si está vacía (debes implementar la integración real)
 async function updateManyChatVariable(psid, variable, value) {
-  const currentValue = await getManyChatVariable(psid, variable);
+  const currentValue = await getManyChatVariable(psid, variable); // Obtiene el valor actual de la variable
   if (!currentValue) {
-    await setManyChatVariable(psid, variable, value);
+    await setManyChatVariable(psid, variable, value); // Solo actualiza si está vacía
   }
 }
 
-// 🎯 Cache temporal para deals recién creados (para evitar duplicados antes de indexación)
-const recentDeals = new Map();
+// =====================================================
+// 🗃️ CACHE TEMPORAL DE DEALS RECIENTES
+// =====================================================
+// Evita duplicados de deals antes de que HubSpot los indexe
+const recentDeals = new Map(); // Mapa en memoria para cachear deals recientes
 
-// 💼 Función para crear/actualizar deal en HubSpot
+// =====================================================
+// 💼 FUNCION PRINCIPAL PARA CREAR/ACTUALIZAR DEALS EN HUBSPOT
+// =====================================================
+// Busca si ya existe un deal abierto para el usuario (por PSID),
+// si existe lo actualiza, si no existe lo crea, y si la intención es cancelar lo cierra.
+// Usa un cache local para evitar duplicados y espera para indexación.
 async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, telefono, nombre, fecha, hora, mensaje }) {
-  console.log('💼 Iniciando upsert Deal HubSpot (solo 1 deal abierto por usuario):', { psid, producto, intencion, hubspotContactId });
+  console.log('💼 Iniciando upsert Deal HubSpot (solo 1 deal abierto por usuario):', { psid, producto, intencion, hubspotContactId }); // Log de inicio
   if (!hubspotContactId) {
-    console.log('❌ Contact ID requerido para crear Deal');
+    console.log('❌ Contact ID requerido para crear Deal'); // Valida que haya contacto
     return { hubspotDealId: null, dealstage: "error - sin contacto", action: "failed" };
   }
 
@@ -261,15 +308,15 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
   const description = `\n🧑 Nombre: ${nombre || "No proporcionado"}\n📞 Teléfono: ${telefono || "No proporcionado"}\n🎯 Intención: ${intencionMap[intencion] || intencion}\n💉 Producto: ${lastProduct || "No detectado"}\n📅 Fecha: ${fecha || "No proporcionada"}\n🕙 Hora: ${hora || "No proporcionada"}\n🆔 PSID: ${psid}\n💬 Mensaje original: ${mensaje}\n`;
 
   // 1. Buscar en cache local primero
-  let cached = recentDeals.get(psid);
+  let cached = recentDeals.get(psid); // Busca en el cache local
   if (cached) {
     if (!stageFinales.includes(cached.lastStage)) {
-      console.log('⚡ Deal ABIERTO encontrado en cache local, solo se actualizará:', cached);
+      console.log('⚡ Deal ABIERTO encontrado en cache local, solo se actualizará:', cached); // Si hay deal abierto, actualiza
       try {
         const updateProperties = {
           dealname: dealName,
           dealstage,
-          hs_lastmodifieddate: new Date().toISOString(),
+          hs_lastmodifieddate: new Date().toISOString(), // Fecha de última modificación
           manychat_psid: psid,
           description
         };
@@ -308,13 +355,13 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
 
   // 2. Si no está en cache o el último está cerrado, esperar 3s antes de buscar en HubSpot
   if (!cached || (cached && stageFinales.includes(cached.lastStage))) {
-    console.log('⏳ Esperando 3s para permitir indexado de HubSpot...');
+    console.log('⏳ Esperando 3s para permitir indexado de HubSpot...'); // Espera para evitar duplicados
     await new Promise(resolve => setTimeout(resolve, 3000));
   }
 
   // 3. Buscar en HubSpot deals abiertos
   try {
-    console.log('🔍 Buscando deals abiertos con manychat_psid:', psid);
+    console.log('🔍 Buscando deals abiertos con manychat_psid:', psid); // Busca deals abiertos por PSID
     const searchOpenDeals = await hubspot.crm.deals.searchApi.doSearch({
       filterGroups: [{
         filters: [
@@ -326,7 +373,7 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
       limit: 5
     });
     console.log('🔎 Resultado deals encontrados:', JSON.stringify(searchOpenDeals?.body?.results, null, 2));
-    let existingDeal = searchOpenDeals?.body?.results?.[0] || null;
+    let existingDeal = searchOpenDeals?.body?.results?.[0] || null; // Toma el primer deal abierto encontrado
 
     // 🔍 Si no se encontró deal abierto, buscar por nombre de deal como fallback
     if (!existingDeal) {
@@ -347,7 +394,7 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
     }
 
     if (existingDeal) {
-      console.log('⚡ Deal ABIERTO encontrado en HubSpot, solo se actualizará:', existingDeal.id);
+      console.log('⚡ Deal ABIERTO encontrado en HubSpot, solo se actualizará:', existingDeal.id); // Si hay deal abierto en HubSpot, actualiza
       const updateProperties = {
         dealname: dealName,
         dealstage,
@@ -356,7 +403,7 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
         description
       };
       if (intencion === 'realizar_pago' && (existingDeal.properties.amount === '0' || !existingDeal.properties.amount)) {
-        updateProperties.amount = '1000';
+        updateProperties.amount = '1000'; // Si es pago, actualiza el monto
       }
       const updateResult = await hubspot.crm.deals.basicApi.update(existingDeal.id, { properties: updateProperties });
       console.log('📝 Deal actualizado (HubSpot):', JSON.stringify(updateResult?.body || updateResult, null, 2));
@@ -390,13 +437,13 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
         stageChanged: false
       };
     } else {
-      console.log('🟢 No hay deal abierto en cache ni en HubSpot. Se creará uno nuevo.');
+      console.log('🟢 No hay deal abierto en cache ni en HubSpot. Se creará uno nuevo.'); // Si no hay deal, crea uno nuevo
       const createProperties = {
         dealname: dealName,
         dealstage,
         pipeline: "default",
         amount: intencion === 'realizar_pago' ? "1000" : "0",
-        closedate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        closedate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // Fecha de cierre estimada
         hs_createdate: new Date().toISOString(),
         manychat_psid: psid,
         description
@@ -419,7 +466,7 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
           'contacts',
           hubspotContactId,
           [{ associationCategory: 'HUBSPOT_DEFINED', associationTypeId: 3 }]
-        );
+        ); // Asocia el contacto al deal
       } catch (e) {
         console.error('⚠️ Error asociando contacto al deal:', e.message);
       }
@@ -432,12 +479,16 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
       };
     }
   } catch (err) {
-    console.error('❌ Error en upsertDealHubspot:', err.message);
+    console.error('❌ Error en upsertDealHubspot:', err.message); // Log de error
     return { hubspotDealId: null, dealstage: "error", action: "failed" };
   }
 }
 
-// 🏢 Función para crear/actualizar contacto en HubSpot
+// =====================================================
+// 🏢 FUNCION PRINCIPAL PARA CREAR/ACTUALIZAR CONTACTOS EN HUBSPOT
+// =====================================================
+// Busca si ya existe el contacto (por email generado con PSID),
+// si existe lo actualiza, si no existe lo crea. Maneja errores y duplicados.
 async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }) {
   console.log('🏢 Iniciando upsert HubSpot:', { psid, nombre, telefono, intencion });
   
@@ -600,11 +651,15 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
   }
 }
 
-// 🚀 Handler principal del webhook (Formato Vercel)
+// =====================================================
+// 🚀 HANDLER PRINCIPAL DEL WEBHOOK (FORMATO VERCEL)
+// =====================================================
+// Endpoint principal que recibe el request, valida, parsea el mensaje,
+// sincroniza con HubSpot y responde con los datos extraídos y resultados.
 export default async function handler(req, res) {
   console.log('🚀 Webhook iniciado:', req.method, new Date().toISOString());
   
-  // ✅ Validar método HTTP
+  // ✅ Solo permite método POST
   if (req.method !== 'POST') {
     console.log('❌ Método no permitido:', req.method);
     return res.status(405).json({ 
@@ -614,7 +669,7 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 📥 Extraer datos del request
+    // 📥 Extrae datos del request y valida el mensaje
     const { mensaje, psid, nombre } = req.body || {};
     
     console.log('📥 Datos recibidos:', { mensaje, psid, nombre });
@@ -628,7 +683,7 @@ export default async function handler(req, res) {
       });
     }
 
-    // 🧠 Parsear mensaje
+    // 🧠 Parseo del mensaje y procesamiento de HubSpot (contacto y deal)
     const { telefono, fecha, hora, intencion, producto } = parseMensaje(mensaje);    // 🏢 Procesar HubSpot (solo si hay PSID)
     let hubspotResult = { 
       hubspotContactId: null, 
@@ -718,7 +773,7 @@ export default async function handler(req, res) {
       console.log('⚠️ PSID no proporcionado, saltando HubSpot');
     }
 
-    // 📤 Respuesta final
+    // 📤 Responde con los datos extraídos y resultados de HubSpot
     const respuesta = {
       success: true,
       timestamp: new Date().toISOString(),
@@ -754,5 +809,8 @@ export default async function handler(req, res) {
   }
 }
 
-// Exportar la función webhook para testing
+// =====================================================
+// 🧪 EXPORTS PARA TESTING
+// =====================================================
+// Exporta el handler y la función de deals para pruebas unitarias
 export { handler as webhook, upsertDealHubspot };
