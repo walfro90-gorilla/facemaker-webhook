@@ -3,7 +3,8 @@
   "version": "2.1.0",
   "description": "🚀 Webhook inteligente para detección de intenciones con integración HubSpot",
   "main": "api/webhook.js",
-  "type": "module",  "scripts": {
+  "type": "module",
+  "scripts": {
     "start": "node api/webhook.js",
     "dev": "nodemon api/webhook.js",
     "test": "node test/test-webhook.js",
@@ -24,7 +25,8 @@
   "license": "ISC",
   "dependencies": {
     "@hubspot/api-client": "^11.2.0",
-    "dotenv": "^16.5.0"
+    "dotenv": "^16.5.0",
+    "express": "^5.1.0"
   },
   "devDependencies": {
     "nodemon": "^3.0.0"

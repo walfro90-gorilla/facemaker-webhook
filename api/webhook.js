@@ -173,7 +173,7 @@ function parseMensaje(mensaje) {
   const productosMap = {
     "aumento mamario": ["aumento mamario", "aumento de busto", "implantes mamarios", "busto", "senos", "pechos"],
     "botox": ["botox", "bótox", "toxina botulínica", "toxina", "botulínica"],
-    "láser": ["láser", "laser", "depilación láser", "depilación", "depilar"],
+    "Emerald láser": ["Emerald láser", "reduccion de grasa", "grasa", "bajar peso", "emerald", "emerald láser", "tratamiento emerald"],
     "rinoplastia": ["rinoplastia", "nariz", "cirugía de nariz", "operación nariz"],
     "liposucción": ["liposucción", "lipo", "grasa", "reducir grasa"],
     "suero": ["suero", "vitaminas", "sueros", "vitaminico"],
@@ -361,7 +361,7 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
 
   // 3. Buscar en HubSpot deals abiertos
   try {
-    console.log('🔍 Buscando deals abiertos con manychat_psid:', psid); // Busca deals abiertos por PSID
+    console.log('🔍 Buscando deals abiertos con manychat_psid:', psid, '(asegúrate que este campo esté mapeado en HubSpot)');
     const searchOpenDeals = await hubspot.crm.deals.searchApi.doSearch({
       filterGroups: [{
         filters: [
@@ -372,9 +372,19 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
       properties: ["dealname", "dealstage", "amount", "closedate", "manychat_psid"],
       limit: 5
     });
-    console.log('🔎 Resultado deals encontrados:', JSON.stringify(searchOpenDeals?.body?.results, null, 2));
-    let existingDeal = searchOpenDeals?.body?.results?.[0] || null; // Toma el primer deal abierto encontrado
-
+    console.log('📊 Respuesta completa deals por PSID:', JSON.stringify(searchOpenDeals, null, 2));
+    let existingDeal = null;
+    // CORREGIDO: usar searchOpenDeals.results en vez de searchOpenDeals.body.results
+    if (searchOpenDeals?.results?.length > 0) {
+      console.log('🧩 Deals encontrados por PSID:');
+      searchOpenDeals.results.forEach((deal, idx) => {
+        console.log(`  [${idx}] ID: ${deal.id}, dealname: ${deal.properties.dealname}, stage: ${deal.properties.dealstage}, psid: ${deal.properties.manychat_psid}`);
+      });
+      existingDeal = searchOpenDeals.results[0];
+    } else {
+      console.log('🧩 No se encontraron deals abiertos por PSID.');
+    }
+    console.log('🔎 Resultado deals encontrados:', JSON.stringify(searchOpenDeals?.results, null, 2));
     // 🔍 Si no se encontró deal abierto, buscar por nombre de deal como fallback
     if (!existingDeal) {
       const fallbackDealName = `${productoDealMap[producto] || producto || "Oportunidad Messenger"} [${psid}]`;
@@ -389,8 +399,9 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
         properties: ["dealname", "dealstage", "amount", "closedate", "manychat_psid"],
         limit: 1
       });
-      console.log('🔎 Resultado deals encontrados por nombre:', JSON.stringify(searchByName?.body?.results, null, 2));
-      existingDeal = searchByName?.body?.results?.[0] || null;
+      // CORREGIDO: usar searchByName.results en vez de searchByName.body.results
+      console.log('🔎 Resultado deals encontrados por nombre:', JSON.stringify(searchByName?.results, null, 2));
+      existingDeal = searchByName?.results?.[0] || null;
     }
 
     if (existingDeal) {
@@ -497,8 +508,17 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
     return { hubspotContactId: null, leadstatus: "error - sin PSID" };
   }
 
+  // 🧩 Split nombre en nombreSolo y apellido
+  let nombreSolo = "";
+  let apellido = "";
+  if (nombre && typeof nombre === 'string') {
+    const partes = nombre.trim().split(/\s+/);
+    nombreSolo = partes[0] || "";
+    apellido = partes.slice(1).join(" ") || "";
+  }
+
   const email = `${psid}@facemaker.chat`;
-    // 📊 Mapeo inteligente usando valores estándar de HubSpot
+  // 📊 Mapeo inteligente usando valores estándar de HubSpot
   const leadstatusMap = {
     agendar_cita: "NEW",
     pedir_informacion: "OPEN", 
@@ -507,9 +527,12 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
     emergencia: "ATTEMPTED_TO_CONTACT"
   };
   const hs_lead_status = leadstatusMap[intencion] || "NEW";
+  // 🕒 Formato de fecha y hora para updated
+  const now = new Date();
+  const pad = n => n.toString().padStart(2, '0');
+  const updated = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
   try {
-    console.log('🔍 Buscando contacto existente...', email);
-    
+    console.log('🔍 Buscando contacto existente por email:', email);
     // 🔐 Verificar que el token de HubSpot esté configurado
     if (!process.env.HUBSPOT_TOKEN || process.env.HUBSPOT_TOKEN === 'your_hubspot_token_here') {
       console.log('❌ Token de HubSpot no configurado en Vercel');
@@ -520,7 +543,6 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
         action: "failed"
       };
     }
-
     // 🔍 Buscar contacto existente por email
     const searchResponse = await hubspot.crm.contacts.searchApi.doSearch({
       filterGroups: [{ 
@@ -530,34 +552,26 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
           value: email 
         }] 
       }],
-      properties: ["email", "firstname", "phone", "hs_lead_status", "lifecyclestage"],
+      properties: ["email", "firstname", "phone", "hs_lead_status", "lifecyclestage", "updated"],
       limit: 1
     });
-
-    console.log('📊 Respuesta de búsqueda HubSpot:', {
-      status: searchResponse?.status,
-      hasBody: !!searchResponse?.body,
-      hasResults: !!searchResponse?.body?.results,
-      resultsLength: searchResponse?.body?.results?.length || 0
-    });
-
+    console.log('📊 Respuesta completa de búsqueda HubSpot:', JSON.stringify(searchResponse, null, 2));
     const existing = searchResponse?.body?.results?.[0];
-
     if (existing) {
-      console.log('✅ Contacto existente encontrado:', existing.id);
-        // 📝 Actualizar contacto existente (solo propiedades válidas)
+      console.log('✅ Contacto existente encontrado:', existing.id, 'Email:', existing.properties.email);
+      // 📝 Actualizar contacto existente (solo propiedades válidas)
       const updateProperties = {
-        hs_lead_status
+        hs_lead_status,
+        updated
       };
-        // Solo actualizar teléfono si es válido
-      if (telefono && telefono.length >= 10) {
+      // Solo actualizar teléfono si es válido
+      if (telefono && telefono.replace(/\D/g, '').length >= 10) {
         updateProperties.phone = telefono;
       }
-
       await hubspot.crm.contacts.basicApi.update(existing.id, {
         properties: updateProperties
       });
-        console.log('✅ Contacto actualizado exitosamente');
+      console.log('✅ Contacto actualizado exitosamente. updated:', updated);
       return { 
         hubspotContactId: existing.id, 
         leadstatus: hs_lead_status, 
@@ -566,23 +580,24 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
       };
     } else {
       console.log('➕ Creando nuevo contacto...');
-        // ➕ Crear nuevo contacto (solo propiedades válidas)
+      // ➕ Crear nuevo contacto (solo propiedades válidas)
       const createProperties = {
         email,
-        firstname: nombre || "Usuario Messenger",
+        firstname: nombreSolo || "Usuario Messenger",
+        lastname: apellido || '',
         lifecyclestage: "lead",
-        hs_lead_status
+        hs_lead_status,
+        updated
       };
-        // Solo agregar teléfono si es válido
-      if (telefono && telefono.length >= 10) {
+      // Solo agregar teléfono si es válido (mínimo 10 dígitos, solo números)
+      if (telefono && telefono.replace(/\D/g, '').length >= 10) {
         createProperties.phone = telefono;
-      }console.log('📝 Propiedades para crear contacto:', createProperties);
-
+      }
+      console.log('📝 Propiedades para crear contacto:', createProperties);
       const response = await hubspot.crm.contacts.basicApi.create({
         properties: createProperties
       });
-
-      console.log('✅ Nuevo contacto creado:', response?.body?.id || response?.id);
+      console.log('✅ Nuevo contacto creado:', response?.body?.id || response?.id, 'updated:', updated);
       return { 
         hubspotContactId: response?.body?.id || response?.id, 
         leadstatus: hs_lead_status,
@@ -598,29 +613,25 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
       body: err.response?.body,
       code: err.code
     });
-    
     // 🔧 Manejar error 409 (contacto ya existe) y extraer ID existente
     if (err.code === 409 && err.message.includes('Contact already exists')) {
       const match = err.message.match(/Existing ID: (\d+)/);
       if (match) {
         const existingContactId = match[1];
         console.log('✅ Contacto existente encontrado via error 409:', existingContactId);
-        
         try {
           // Actualizar el contacto existente
           const updateProperties = {
-            hs_lead_status
+            hs_lead_status,
+            updated
           };
-          
           if (telefono && telefono.length >= 10) {
             updateProperties.phone = telefono;
           }
-
           await hubspot.crm.contacts.basicApi.update(existingContactId, {
             properties: updateProperties
           });
-
-          console.log('✅ Contacto existente actualizado via ID del error');
+          console.log('✅ Contacto existente actualizado via ID del error. updated:', updated);
           return { 
             hubspotContactId: existingContactId, 
             leadstatus: hs_lead_status, 
@@ -632,7 +643,6 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
         }
       }
     }
-    
     // 🔍 Información adicional para debugging
     const errorDetails = {
       hubspotContactId: null,
@@ -646,7 +656,6 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
         httpStatus: err.response?.status
       }
     };
-    
     return errorDetails;
   }
 }
@@ -698,6 +707,17 @@ export default async function handler(req, res) {
       action: "skipped"
     };
     
+    // Forzar creación de deal si hay teléfono válido (>=10 dígitos), intención relevante o producto
+    const debeCrearDeal = (
+      (telefono && telefono.replace(/\D/g, '').length >= 10) ||
+      intencion === 'agendar_cita' ||
+      intencion === 'pedir_informacion' ||
+      producto
+    );
+
+    // Solo crear o actualizar deal si hay teléfono válido (>=10 dígitos)
+    const tieneTelefonoValido = telefono && telefono.replace(/\D/g, '').length >= 10;
+
     if (psid) {
       hubspotResult = await upsertLeadHubspot({ 
         psid, 
@@ -706,98 +726,23 @@ export default async function handler(req, res) {
         intencion, 
         producto 
       });
-      // 💼 LÓGICA INTELIGENTE: Crear/actualizar/cerrar deal
-      // 1. Si la intención es cancelar, procesar cierre aunque no haya producto
-      if (hubspotResult.hubspotContactId && intencion === 'cancelar') {
-        console.log('💼 Procesando cierre de deal por intención cancelar para:', {
-          contacto: hubspotResult.hubspotContactId,
-          intencion
-        });
+      if (hubspotResult.hubspotContactId && tieneTelefonoValido) {
         dealResult = await upsertDealHubspot({
           psid,
-          producto: '', // No importa el producto para cancelar
-          intencion: 'cancelar',
+          producto: producto || '',
+          intencion: intencion || 'pedir_informacion',
           hubspotContactId: hubspotResult.hubspotContactId,
           telefono,
-          nombre, // <-- AGREGADO
+          nombre,
           fecha,
           hora,
           mensaje
         });
-        // Si el deal fue cerrado, limpiar cache
-        if (dealResult.dealstage === '1561068264') {
-          recentDeals.delete(psid);
-        }
-      } else if (hubspotResult.hubspotContactId && producto) {
-        console.log('💼 Procesando deal inteligente para:', {
-          contacto: hubspotResult.hubspotContactId,
-          producto,
-          intencion
-        });
-        dealResult = await upsertDealHubspot({
-          psid,
-          producto,
-          intencion,
-          hubspotContactId: hubspotResult.hubspotContactId,
-          telefono,
-          nombre, // <-- AGREGADO
-          fecha,
-          hora,
-          mensaje
-        });
-        // 📊 Log del resultado para monitoreo
-        console.log('📊 Resultado del procesamiento de deal:', {
-          dealId: dealResult.hubspotDealId,
-          action: dealResult.action,
-          stageChanged: dealResult.stageChanged || false,
-          isNewDeal: dealResult.isNewDeal || false
-        });
-      } else if (!producto && intencion !== 'cancelar') {
-        console.log('⚠️ Sin producto detectado - no se procesará deal');
-        dealResult = {
-          hubspotDealId: null,
-          dealstage: null,
-          action: "skipped - sin producto",
-          reason: "No se detectó producto específico en el mensaje"
-        };
-      } else {
-        console.log('⚠️ Sin contacto válido - no se puede crear deal');
-        dealResult = {
-          hubspotDealId: null,
-          dealstage: null,
-          action: "skipped - sin contacto",
-          reason: "No se pudo crear/obtener contacto en HubSpot"
-        };
+      } else if (!tieneTelefonoValido) {
+        console.log('🤖 No se crea deal porque no se proporcionó un teléfono válido.');
       }
-    } else {
-      console.log('⚠️ PSID no proporcionado, saltando HubSpot');
     }
-
-    // 📤 Responde con los datos extraídos y resultados de HubSpot
-    const respuesta = {
-      success: true,
-      timestamp: new Date().toISOString(),
-      datos_extraidos: {
-        telefono: telefono || null,
-        fecha: fecha || null, 
-        hora: hora || null,
-        intencion: intencion || null,
-        producto: producto || null
-      },
-      hubspot: {
-        contacto: hubspotResult,
-        deal: dealResult
-      },
-      metadata: {
-        mensaje_original: mensaje,
-        psid: psid || null,
-        nombre: nombre || null
-      }
-    };
-
-    console.log('✅ Respuesta enviada:', respuesta);
-    return res.status(200).json(respuesta);
-    
+    // ...existing code...
   } catch (error) {
     console.error('💥 Error general:', error);
     return res.status(500).json({
