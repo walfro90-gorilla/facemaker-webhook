@@ -296,22 +296,20 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
   };
   const stageFinales = ["1561068262", "1561068263", "1561068264"];
 
-  // Nombre dinámico
-  // Siempre usa el producto y la intención detectados en el mensaje actual para el dealName y la descripción
-  let lastProduct = producto;
-  // Si la intención es cancelar y hay un producto en cache, usa ese producto solo si el mensaje actual no tiene producto
-  if (intencion === 'cancelar') {
+  // Nombre dinámico: SIEMPRE usa los datos del mensaje actual
+  // Solo en caso de cancelación y si el mensaje actual NO tiene producto, usa el producto del cache
+  let productoParaDeal = producto;
+  if (intencion === 'cancelar' && !producto) {
     const cached = recentDeals.get(psid);
-    if (!producto && cached && cached.producto) {
-      lastProduct = cached.producto;
+    if (cached && cached.producto) {
+      productoParaDeal = cached.producto;
     }
   }
-  // NUEVA NOMENCLATURA DEL DEAL: SIEMPRE usa los datos del mensaje actual
-  const dealName = `${(lastProduct || "Servicio").charAt(0).toUpperCase() + (lastProduct || "Servicio").slice(1)} - ${nombre || "Usuario"} - ${intencionMap[intencion] || intencion}`;
+  const dealName = `${(productoParaDeal || "Servicio").charAt(0).toUpperCase() + (productoParaDeal || "Servicio").slice(1)} - ${nombre || "Usuario"} - ${intencionMap[intencion] || intencion}`;
   const dealstage = intencionStageMap[intencion] || "1561068258";
 
   // Descripción completa para el asesor: SIEMPRE usa los datos del mensaje actual
-  const description = `\n🧑 Nombre: ${nombre || "No proporcionado"}\n📞 Teléfono: ${telefono || "No proporcionado"}\n🎯 Intención: ${intencionMap[intencion] || intencion}\n💉 Producto: ${lastProduct || "No detectado"}\n📅 Fecha: ${fecha || "No proporcionada"}\n🕙 Hora: ${hora || "No proporcionada"}\n🆔 PSID: ${psid}\n💬 Mensaje original: ${mensaje}\n`;
+  const description = `\n🧑 Nombre: ${nombre || "No proporcionado"}\n📞 Teléfono: ${telefono || "No proporcionado"}\n🎯 Intención: ${intencionMap[intencion] || intencion}\n💉 Producto: ${productoParaDeal || "No detectado"}\n📅 Fecha: ${fecha || "No proporcionada"}\n🕙 Hora: ${hora || "No proporcionada"}\n🆔 PSID: ${psid}\n💬 Mensaje original: ${mensaje}\n`;
 
   // 1. Buscar en cache local primero
   let cached = recentDeals.get(psid); // Busca en el cache local
@@ -329,12 +327,13 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
         // Si la intención es cancelar, solo cambia el stage y nombre
         const updateResult = await hubspot.crm.deals.basicApi.update(cached.dealId, { properties: updateProperties });
         console.log('📝 Deal actualizado (cache):', JSON.stringify(updateResult?.body || updateResult, null, 2));
+        // Actualiza el cache SOLO con los datos del mensaje actual
         recentDeals.set(psid, {
           dealId: cached.dealId,
           dealName,
           lastStage: dealstage,
           timestamp: Date.now(),
-          producto,
+          producto: productoParaDeal,
           psid
         });
         // Si se cerró el deal, limpiar cache
@@ -424,12 +423,13 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
       }
       const updateResult = await hubspot.crm.deals.basicApi.update(existingDeal.id, { properties: updateProperties });
       console.log('📝 Deal actualizado (HubSpot):', JSON.stringify(updateResult?.body || updateResult, null, 2));
+      // Actualiza el cache SOLO con los datos del mensaje actual
       recentDeals.set(psid, {
         dealId: existingDeal.id,
         dealName,
         lastStage: dealstage,
         timestamp: Date.now(),
-        producto,
+        producto: productoParaDeal,
         psid
       });
       // Si se cerró el deal, limpiar cache
@@ -468,12 +468,13 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
       const dealResponse = await hubspot.crm.deals.basicApi.create({ properties: createProperties });
       const dealId = dealResponse?.body?.id || dealResponse?.id;
       console.log('🆕 Deal creado:', JSON.stringify(dealResponse?.body || dealResponse, null, 2));
+      // Actualiza el cache SOLO con los datos del mensaje actual
       recentDeals.set(psid, {
         dealId,
         dealName,
         lastStage: dealstage,
         timestamp: Date.now(),
-        producto,
+        producto: productoParaDeal,
         psid
       });
       try {
