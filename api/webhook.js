@@ -358,11 +358,10 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
     }
   }
 
-  // 2. Si no está en cache o el último está cerrado, esperar 3s antes de buscar en HubSpot
-  if (!cached || (cached && stageFinales.includes(cached.lastStage))) {
-    console.log('⏳ Esperando 3s para permitir indexado de HubSpot...'); // Espera para evitar duplicados
-    await new Promise(resolve => setTimeout(resolve, 3000));
-  }
+  // 2. Si no está en cache o el último está cerrado, antes se esperaba 3s para evitar duplicados.
+  // Mejorado: Elimina el delay artificial para evitar timeouts en Manychat y mejorar velocidad.
+  // Si necesitas evitar duplicados, implementa lógica de idempotencia o usa un sistema de colas en backend.
+  // (Si quieres un delay solo en entorno local/test, puedes usar: if (process.env.NODE_ENV === 'development') ...)
 
   // 3. Buscar en HubSpot deals abiertos
   try {
