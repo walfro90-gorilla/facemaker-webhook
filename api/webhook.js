@@ -23,7 +23,7 @@ import dotenv from 'dotenv'; // Permite cargar variables de entorno desde un arc
 dotenv.config();
 
 // 🔧 Inicializa el cliente de HubSpot con el token de acceso
-const hubspot = new Client({ 
+const hubspot = new Client({
   accessToken: process.env.HUBSPOT_TOKEN || 'your_hubspot_token_here' // Token de autenticación para la API
 });
 
@@ -35,10 +35,10 @@ const hubspot = new Client({
 // Utiliza expresiones regulares y lógica de scoring para mayor precisión
 function parseMensaje(mensaje) {
   console.log('📥 Iniciando parsing súper inteligente:', mensaje); // Log para depuración
-  
+
   // 🔍 Normaliza el mensaje a minúsculas y elimina espacios innecesarios
   const texto = (mensaje || "").toLowerCase().trim(); // Normaliza el texto
-  
+
   // ⚠️ Si el mensaje está vacío, retorna valores por defecto
   // Esto evita errores en el procesamiento posterior
   if (!texto) {
@@ -54,7 +54,7 @@ function parseMensaje(mensaje) {
     /\b\d{10,15}\b/g, // Números largos genéricos
     /\b\d{8,12}\b/g // Números medianos
   ];
-  
+
   // 📞 Busca todos los patrones de teléfono en el text
   // o toma el número más largo encontrado (más probable que sea completo)
   let telefono = "";
@@ -106,7 +106,7 @@ function parseMensaje(mensaje) {
     /\b(medio\s?día|mediodía)\b/i,
     /\b(media\s?noche|medianoche)\b/i
   ];
-  
+
   // 🎯 Busca la primera coincidencia de hora en el texto
   // y toma el formato más común
   let hora = "";
@@ -117,7 +117,7 @@ function parseMensaje(mensaje) {
       break;
     }
   }
-  
+
 
   // 🎯 Detecta la intención del mensaje usando keywords y un sistema de scoring
   // Define un mapa de intenciones con palabras clave y pesos
@@ -127,7 +127,7 @@ function parseMensaje(mensaje) {
       weight: 2.0 // Prioridad máxima
     },
     agendar_cita: {
-      keywords: ['sita','cita', 'agendar', 'apartar', 'reservar', 'programar', 'consulta', 'appointment', 'agenda', 'cuando', 'disponible'],
+      keywords: ['sita', 'cita', 'agendar', 'apartar', 'reservar', 'programar', 'consulta', 'appointment', 'agenda', 'cuando', 'disponible'],
       weight: 1.0
     },
     pedir_informacion: {
@@ -170,19 +170,50 @@ function parseMensaje(mensaje) {
   if (cancelarScore > 0) intencion = 'cancelar';
 
   // 💉 Detecta el producto/servicio mencionado usando un diccionario de variaciones
+  // Diccionario ampliado y normalizado para detectar variantes, errores y tildes
   const productosMap = {
-    "aumento mamario": ["aumento mamario", "aumento de busto", "implantes mamarios", "busto", "senos", "pechos"],
-    "botox": ["botox", "bótox", "toxina botulínica", "arrugas", "relleno de arrugas", "relleno facial", "tratamiento de arrugas"],
-    "Emerald láser": ["Emerald láser", "depilación láser", "depilación", "depilar", "emerald", "tratamiento emerald", "láser de grasa"],
-    "rinoplastia": ["rinoplastia", "nariz", "cirugía de nariz", "operación nariz"],
-    "liposucción": ["liposucción", "lipo", "grasa", "reducir grasa", "sacar grasa", "lipoláser"],
-    "suero": ["suero", "vitaminas", "sueros", "vitaminico", "vitaminas intravenosas"],
-    "cirugía": ["cirugía", "operación", "cirugía estética"],
-    "bichectomía": ["bichectomía", "cachetes", "mejillas"],
-    "lifting": ["lifting", "estiramiento", "lifting facial"],
-    "peeling": ["peeling", "exfoliación", "peeling químico"],
-    "rellenos": ["rellenos", "ácido hialurónico", "hialurónico", "relleno de labios", "relleno facial"]
+    "aumento mamario": ["aumento mamario", "aumento de busto", "implantes mamarios", "busto", "senos", "pechos", "aumento busto", "implantes", "mamoplastia"],
+    "botox": ["botox", "bótox", "toxina botulinica", "toxina botulínica", "arrugas", "relleno de arrugas", "relleno facial", "tratamiento de arrugas", "botox facial", "botox labios"],
+    "emerald láser": ["emerald láser", "emerald laser", "depilación láser", "depilacion laser", "depilación", "depilacion", "depilar", "emerald", "tratamiento emerald", "láser de grasa", "laser de grasa"],
+    "rinoplastia": ["rinoplastia", "nariz", "cirugía de nariz", "cirugia de nariz", "operación nariz", "operacion nariz", "rinoplastía", "rinoplastia estetica"],
+    "liposucción": ["liposucción", "liposuccion", "lipo", "grasa", "reducir grasa", "sacar grasa", "lipoláser", "lipolaser", "lipoescultura"],
+    "suero": ["suero", "vitaminas", "sueros", "vitaminico", "vitaminas intravenosas", "suero vitaminico", "suero vitamínico"],
+    "cirugía": ["cirugía", "cirugia", "operación", "operacion", "cirugía estética", "cirugia estetica"],
+    "bichectomía": ["bichectomía", "bichectomia", "bichectomias", "cachetes", "mejillas", "quitar cachetes", "quitar mejillas", "extracción de bolas de bichat", "extraccion de bolas de bichat", "bolas de bichat"],
+    "lifting": ["lifting", "estiramiento", "lifting facial", "lifting cara", "lifting de cara"],
+    "peeling": ["peeling", "exfoliación", "exfoliacion", "peeling químico", "peeling quimico", "peeling facial"],
+    "rellenos": ["rellenos", "ácido hialurónico", "acido hialuronico", "hialurónico", "hialuronico", "relleno de labios", "relleno labios", "relleno facial", "rellenos faciales"],
+    "celulitis": [
+      "celulitis",
+      "tratamiento de celulitis",
+      "eliminar celulitis",
+      "reducir celulitis",
+      "anticelulítico",
+      "anticelulitico",
+      "anticelulitis",
+      "piel de naranja",
+      "masaje anticelulítico",
+      "masaje anticelulitico",
+      "radiofrecuencia corporal",
+      "drenaje linfático",
+      "drenaje linfatico",
+      "cavitación",
+      "cavitacion",
+      "ondas de choque",
+      "crema anticelulitis"
+    ]
   };
+
+  // Normaliza texto para comparar sin tildes ni mayúsculas
+  function normalizar(str) {
+    return (str || "")
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // quita tildes
+      .replace(/[^a-z0-9\s]/g, ""); // quita caracteres especiales
+  }
+
+  const textoNormalizado = normalizar(texto);
 
   let producto = "";
   let maxProductScore = 0;
@@ -192,8 +223,9 @@ function parseMensaje(mensaje) {
     let productScore = 0;
     let variantes = [];
     for (const variation of variations) {
-      if (texto.includes(variation)) {
-        productScore += variation.split(' ').length; // Términos más específicos = más peso
+      const variationNorm = normalizar(variation);
+      if (textoNormalizado.includes(variationNorm)) {
+        productScore += variationNorm.split(' ').length; // Términos más específicos = más peso
         variantes.push(variation);
       }
     }
@@ -204,7 +236,7 @@ function parseMensaje(mensaje) {
       variantesDetectadas = variantes;
     }
   }
-  console.log('🔍 Producto detectado:', productoDetectado, '| Score:', maxProductScore, '| Variantes:', variantesDetectadas, '| Texto:', texto);
+  console.log('🔍 Producto detectado:', productoDetectado, '| Score:', maxProductScore, '| Variantes:', variantesDetectadas, '| Texto:', texto, '| Normalizado:', textoNormalizado);
 
   const resultado = { telefono, fecha, hora, intencion, producto }; // Objeto con los datos extraídos
 
@@ -220,7 +252,7 @@ function parseMensaje(mensaje) {
     textLength: texto.length,
     processingTime: Date.now()
   }); // Log de depuración con los resultados y métricas
-  
+
   return resultado;
 }
 
@@ -269,7 +301,7 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
   // Mapeos
   const productoDealMap = {
     "aumento mamario": "Aumento Mamario - Consulta",
-    "aumento de busto": "Aumento de Busto - Consulta", 
+    "aumento de busto": "Aumento de Busto - Consulta",
     "implantes": "Implantes Mamarios - Consulta",
     "botox": "Botox - Tratamiento",
     "bótox": "Botox - Tratamiento",
@@ -508,7 +540,7 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
 // si existe lo actualiza, si no existe lo crea. Maneja errores y duplicados.
 async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }) {
   console.log('🏢 Iniciando upsert HubSpot:', { psid, nombre, telefono, intencion });
-  
+
   if (!psid) {
     console.log('❌ PSID requerido para HubSpot');
     return { hubspotContactId: null, leadstatus: "error - sin PSID" };
@@ -527,7 +559,7 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
   // 📊 Mapeo inteligente usando valores estándar de HubSpot
   const leadstatusMap = {
     agendar_cita: "NEW",
-    pedir_informacion: "OPEN", 
+    pedir_informacion: "OPEN",
     realizar_pago: "CONNECTED",
     cancelar: "UNQUALIFIED",
     emergencia: "ATTEMPTED_TO_CONTACT"
@@ -536,14 +568,14 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
   // 🕒 Formato de fecha y hora para updated
   const now = new Date();
   const pad = n => n.toString().padStart(2, '0');
-  const updated = `${now.getFullYear()}${pad(now.getMonth()+1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+  const updated = `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
   try {
     console.log('🔍 Buscando contacto existente por email:', email);
     // 🔐 Verificar que el token de HubSpot esté configurado
     if (!process.env.HUBSPOT_TOKEN || process.env.HUBSPOT_TOKEN === 'your_hubspot_token_here') {
       console.log('❌ Token de HubSpot no configurado en Vercel');
-      return { 
-        hubspotContactId: null, 
+      return {
+        hubspotContactId: null,
         leadstatus: "error - token no configurado",
         error: "HUBSPOT_TOKEN no está configurado en las variables de entorno",
         action: "failed"
@@ -551,12 +583,12 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
     }
     // 🔍 Buscar contacto existente por email
     const searchResponse = await hubspot.crm.contacts.searchApi.doSearch({
-      filterGroups: [{ 
-        filters: [{ 
-          propertyName: "email", 
-          operator: "EQ", 
-          value: email 
-        }] 
+      filterGroups: [{
+        filters: [{
+          propertyName: "email",
+          operator: "EQ",
+          value: email
+        }]
       }],
       properties: ["email", "firstname", "phone", "hs_lead_status", "lifecyclestage", "updated"],
       limit: 1
@@ -578,11 +610,11 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
         properties: updateProperties
       });
       console.log('✅ Contacto actualizado exitosamente. updated:', updated);
-      return { 
-        hubspotContactId: existing.id, 
-        leadstatus: hs_lead_status, 
+      return {
+        hubspotContactId: existing.id,
+        leadstatus: hs_lead_status,
         action: "updated",
-        email 
+        email
       };
     } else {
       console.log('➕ Creando nuevo contacto...');
@@ -604,13 +636,14 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
         properties: createProperties
       });
       console.log('✅ Nuevo contacto creado:', response?.body?.id || response?.id, 'updated:', updated);
-      return { 
-        hubspotContactId: response?.body?.id || response?.id, 
+      return {
+        hubspotContactId: response?.body?.id || response?.id,
         leadstatus: hs_lead_status,
         action: "created",
         email
       };
-    }  } catch (err) {
+    }
+  } catch (err) {
     console.error('❌ Error con HubSpot:', err.message);
     console.error('📝 Detalles del error:', {
       message: err.message,
@@ -638,11 +671,11 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
             properties: updateProperties
           });
           console.log('✅ Contacto existente actualizado via ID del error. updated:', updated);
-          return { 
-            hubspotContactId: existingContactId, 
-            leadstatus: hs_lead_status, 
+          return {
+            hubspotContactId: existingContactId,
+            leadstatus: hs_lead_status,
             action: "updated_via_error",
-            email 
+            email
           };
         } catch (updateErr) {
           console.error('❌ Error actualizando contacto existente:', updateErr.message);
@@ -673,11 +706,11 @@ async function upsertLeadHubspot({ psid, nombre, telefono, intencion, producto }
 // sincroniza con HubSpot y responde con los datos extraídos y resultados.
 export default async function handler(req, res) {
   console.log('🚀 Webhook iniciado:', req.method, new Date().toISOString());
-  
+
   // ✅ Solo permite método POST
   if (req.method !== 'POST') {
     console.log('❌ Método no permitido:', req.method);
-    return res.status(405).json({ 
+    return res.status(405).json({
       error: '❌ Método no permitido',
       permitidos: ['POST']
     });
@@ -686,9 +719,9 @@ export default async function handler(req, res) {
   try {
     // 📥 Extrae datos del request y valida el mensaje
     const { mensaje, psid, nombre } = req.body || {};
-    
+
     console.log('📥 Datos recibidos:', { mensaje, psid, nombre });
-    
+
     // ✅ Validar mensaje
     if (!mensaje) {
       console.log('❌ Mensaje requerido');
