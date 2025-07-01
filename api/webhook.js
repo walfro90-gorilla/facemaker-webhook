@@ -173,7 +173,7 @@ function parseMensaje(mensaje) {
   const productosMap = {
     "aumento mamario": ["aumento mamario", "aumento de busto", "implantes mamarios", "busto", "senos", "pechos"],
     "botox": ["botox", "bótox", "toxina botulínica", "arrugas", "relleno de arrugas", "relleno facial", "tratamiento de arrugas"],
-    "láser": ["láser", "laser", "depilación láser", "depilación", "depilar", "emerald", "emerald láser", "tratamiento emerald", "láser de grasa", "laser de grasa"],
+    "Emerald láser": ["Emerald láser", "depilación láser", "depilación", "depilar", "emerald", "tratamiento emerald", "láser de grasa"],
     "rinoplastia": ["rinoplastia", "nariz", "cirugía de nariz", "operación nariz"],
     "liposucción": ["liposucción", "lipo", "grasa", "reducir grasa", "sacar grasa", "lipoláser"],
     "suero": ["suero", "vitaminas", "sueros", "vitaminico", "vitaminas intravenosas"],
@@ -770,7 +770,12 @@ export default async function handler(req, res) {
     }
     const t3 = Date.now();
     console.log(`[LOG] Tiempo total de procesamiento del webhook: ${t3 - t0}ms`);
-    // ...existing code...
+    // ✅ Responder a Manychat con el resultado JSON
+    return res.status(200).json({
+      success: true,
+      hubspotResult,
+      dealResult
+    });
   } catch (error) {
     console.error('💥 Error general:', error);
     return res.status(500).json({
