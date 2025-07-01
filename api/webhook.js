@@ -172,34 +172,39 @@ function parseMensaje(mensaje) {
   // 💉 Detecta el producto/servicio mencionado usando un diccionario de variaciones
   const productosMap = {
     "aumento mamario": ["aumento mamario", "aumento de busto", "implantes mamarios", "busto", "senos", "pechos"],
-    "botox": ["botox", "bótox", "toxina botulínica", "toxina", "botulínica"],
-    "Emerald láser": ["Emerald láser", "reduccion de grasa", "grasa", "bajar peso", "emerald", "emerald láser", "tratamiento emerald"],
+    "botox": ["botox", "bótox", "toxina botulínica", "arrugas", "relleno de arrugas", "relleno facial", "tratamiento de arrugas"],
+    "láser": ["láser", "laser", "depilación láser", "depilación", "depilar", "emerald", "emerald láser", "tratamiento emerald", "láser de grasa", "laser de grasa"],
     "rinoplastia": ["rinoplastia", "nariz", "cirugía de nariz", "operación nariz"],
-    "liposucción": ["liposucción", "lipo", "grasa", "reducir grasa"],
-    "suero": ["suero", "vitaminas", "sueros", "vitaminico"],
-    "emerald": ["emerald", "emerald láser", "tratamiento emerald"],
+    "liposucción": ["liposucción", "lipo", "grasa", "reducir grasa", "sacar grasa", "lipoláser"],
+    "suero": ["suero", "vitaminas", "sueros", "vitaminico", "vitaminas intravenosas"],
     "cirugía": ["cirugía", "operación", "cirugía estética"],
     "bichectomía": ["bichectomía", "cachetes", "mejillas"],
-    "lifting": ["lifting", "estiramiento"],
-    "peeling": ["peeling", "exfoliación"],
-    "rellenos": ["rellenos", "ácido hialurónico", "hialurónico"]
+    "lifting": ["lifting", "estiramiento", "lifting facial"],
+    "peeling": ["peeling", "exfoliación", "peeling químico"],
+    "rellenos": ["rellenos", "ácido hialurónico", "hialurónico", "relleno de labios", "relleno facial"]
   };
 
   let producto = "";
   let maxProductScore = 0;
-  
+  let productoDetectado = "";
+  let variantesDetectadas = [];
   for (const [prodKey, variations] of Object.entries(productosMap)) {
     let productScore = 0;
+    let variantes = [];
     for (const variation of variations) {
       if (texto.includes(variation)) {
         productScore += variation.split(' ').length; // Términos más específicos = más peso
+        variantes.push(variation);
       }
     }
     if (productScore > maxProductScore) {
       maxProductScore = productScore;
       producto = prodKey;
+      productoDetectado = prodKey;
+      variantesDetectadas = variantes;
     }
   }
+  console.log('🔍 Producto detectado:', productoDetectado, '| Score:', maxProductScore, '| Variantes:', variantesDetectadas, '| Texto:', texto);
 
   const resultado = { telefono, fecha, hora, intencion, producto }; // Objeto con los datos extraídos
 
