@@ -699,40 +699,58 @@ export default async function handler(req, res) {
     }
 
     // 🧠 Parseo del mensaje y procesamiento de HubSpot (contacto y deal)
-    const { telefono, fecha, hora, intencion, producto } = parseMensaje(mensaje);    // 🏢 Procesar HubSpot (solo si hay PSID)
-    let hubspotResult = { 
-      hubspotContactId: null, 
+    const { telefono, fecha, hora, intencion, producto } = parseMensaje(mensaje);
+    let hubspotResult = {
+      hubspotContactId: null,
       leadstatus: "sin procesar - falta PSID",
       action: "skipped"
     };
-
     let dealResult = {
       dealId: null,
       dealName: null,
       dealStage: null,
       action: "skipped"
     };
-    
-    // Forzar creación de deal si hay teléfono válido (>=10 dígitos), intención relevante o producto
-    const debeCrearDeal = (
-      (telefono && telefono.replace(/\D/g, '').length >= 10) ||
-      intencion === 'agendar_cita' ||
-      intencion === 'pedir_informacion' ||
-      producto
-    );
 
-    // Solo crear o actualizar deal si hay teléfono válido (>=10 dígitos)
-    const tieneTelefonoValido = telefono && telefono.replace(/\D/g, '').length >= 10;
+    // Logs de tiempo
+    const t0 = Date.now();
 
+    // Nueva lógica: si ya existe un deal abierto para el usuario, permite actualizarlo aunque no haya teléfono
+    let existeDealAbierto = false;
+    let dealCheckResult = null;
     if (psid) {
-      hubspotResult = await upsertLeadHubspot({ 
-        psid, 
-        nombre, 
-        telefono, 
-        intencion, 
-        producto 
+      hubspotResult = await upsertLeadHubspot({
+        psid,
+        nombre,
+        telefono,
+        intencion,
+        producto
       });
-      if (hubspotResult.hubspotContactId && tieneTelefonoValido) {
+      // Buscar si ya existe un deal abierto para este PSID
+      try {
+        const stageFinales = ["1561068262", "1561068263", "1561068264"];
+        const searchOpenDeals = await hubspot.crm.deals.searchApi.doSearch({
+          filterGroups: [{
+            filters: [
+              { propertyName: "manychat_psid", operator: "EQ", value: psid },
+              { propertyName: "dealstage", operator: "NOT_IN", values: stageFinales }
+            ]
+          }],
+          properties: ["dealname", "dealstage", "amount", "closedate", "manychat_psid"],
+          limit: 1
+        });
+        existeDealAbierto = searchOpenDeals?.results?.length > 0;
+        dealCheckResult = searchOpenDeals;
+        console.log(`[LOG] ¿Existe deal abierto para PSID ${psid}?`, existeDealAbierto);
+      } catch (e) {
+        console.error('[LOG] Error buscando deals abiertos para PSID', psid, e.message);
+      }
+
+      // Permitir crear/actualizar deal si hay teléfono válido o si ya existe un deal abierto
+      const tieneTelefonoValido = telefono && telefono.replace(/\D/g, '').length >= 10;
+      if (hubspotResult.hubspotContactId && (tieneTelefonoValido || existeDealAbierto)) {
+        const t1 = Date.now();
+        console.log(`[LOG] Tiempo hasta antes de upsertDealHubspot: ${t1 - t0}ms`);
         dealResult = await upsertDealHubspot({
           psid,
           producto: producto || '',
@@ -744,10 +762,14 @@ export default async function handler(req, res) {
           hora,
           mensaje
         });
-      } else if (!tieneTelefonoValido) {
-        console.log('🤖 No se crea deal porque no se proporcionó un teléfono válido.');
+        const t2 = Date.now();
+        console.log(`[LOG] Tiempo de upsertDealHubspot: ${t2 - t1}ms`);
+      } else if (!tieneTelefonoValido && !existeDealAbierto) {
+        console.log('🤖 No se crea deal porque no se proporcionó un teléfono válido y no existe deal abierto.');
       }
     }
+    const t3 = Date.now();
+    console.log(`[LOG] Tiempo total de procesamiento del webhook: ${t3 - t0}ms`);
     // ...existing code...
   } catch (error) {
     console.error('💥 Error general:', error);
