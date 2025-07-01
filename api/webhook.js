@@ -292,19 +292,20 @@ async function upsertDealHubspot({ psid, producto, intencion, hubspotContactId, 
   const stageFinales = ["1561068262", "1561068263", "1561068264"];
 
   // Nombre dinámico
-  // Si la intención es cancelar y hay un producto en cache, usa ese producto para el dealName
+  // Siempre usa el producto y la intención detectados en el mensaje actual para el dealName y la descripción
   let lastProduct = producto;
+  // Si la intención es cancelar y hay un producto en cache, usa ese producto solo si el mensaje actual no tiene producto
   if (intencion === 'cancelar') {
     const cached = recentDeals.get(psid);
     if (!producto && cached && cached.producto) {
       lastProduct = cached.producto;
     }
   }
-  // NUEVA NOMENCLATURA DEL DEAL
+  // NUEVA NOMENCLATURA DEL DEAL: SIEMPRE usa los datos del mensaje actual
   const dealName = `${(lastProduct || "Servicio").charAt(0).toUpperCase() + (lastProduct || "Servicio").slice(1)} - ${nombre || "Usuario"} - ${intencionMap[intencion] || intencion}`;
   const dealstage = intencionStageMap[intencion] || "1561068258";
 
-  // Descripción completa para el asesor
+  // Descripción completa para el asesor: SIEMPRE usa los datos del mensaje actual
   const description = `\n🧑 Nombre: ${nombre || "No proporcionado"}\n📞 Teléfono: ${telefono || "No proporcionado"}\n🎯 Intención: ${intencionMap[intencion] || intencion}\n💉 Producto: ${lastProduct || "No detectado"}\n📅 Fecha: ${fecha || "No proporcionada"}\n🕙 Hora: ${hora || "No proporcionada"}\n🆔 PSID: ${psid}\n💬 Mensaje original: ${mensaje}\n`;
 
   // 1. Buscar en cache local primero
