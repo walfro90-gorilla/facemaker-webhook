@@ -771,10 +771,21 @@ export default async function handler(req, res) {
     const t3 = Date.now();
     console.log(`[LOG] Tiempo total de procesamiento del webhook: ${t3 - t0}ms`);
     // ✅ Responder a Manychat con el resultado JSON
+    // Construir datos de parsing y metadata
+    const datos_extraidos = { telefono, fecha, hora, intencion, producto };
+    const metadata = {
+      psid,
+      nombre,
+      mensaje,
+      timestamp: new Date().toISOString(),
+      tiempo_total_ms: t3 - t0
+    };
     return res.status(200).json({
       success: true,
+      datos_extraidos,
       hubspotResult,
-      dealResult
+      dealResult,
+      metadata
     });
   } catch (error) {
     console.error('💥 Error general:', error);
