@@ -1,16 +1,83 @@
 {
   "version": 2,
-  "name": "webhook-inteligente",
+  "name": "webhook-inteligente-manychat",
   "builds": [
     {
       "src": "api/webhook.js",
+      "use": "@vercel/node",
+      "config": {
+        "maxLambdaSize": "50mb"
+      }
+    },
+    {
+      "src": "api/monitoring.js",
       "use": "@vercel/node"
     }
   ],
   "routes": [
     {
       "src": "/api/webhook",
-      "dest": "/api/webhook.js"
+      "dest": "/api/webhook.js",
+      "methods": ["POST"]
+    },
+    {
+      "src": "/api/health",
+      "dest": "/api/monitoring.js",
+      "methods": ["GET"]
+    },
+    {
+      "src": "/api/metrics",
+      "dest": "/api/monitoring.js",
+      "methods": ["GET"]
+    },
+    {
+      "src": "/api/alerts",
+      "dest": "/api/monitoring.js",
+      "methods": ["GET"]
+    },
+    {
+      "src": "/api/cache/stats",
+      "dest": "/api/monitoring.js",
+      "methods": ["GET"]
     }
-  ]
+  ],
+  "env": {
+    "NODE_ENV": "production",
+    "LOG_LEVEL": "info"
+  },
+  "functions": {
+    "api/webhook.js": {
+      "maxDuration": 30
+    },
+    "api/monitoring.js": {
+      "maxDuration": 10
+    }
+  },
+  "headers": [
+    {
+      "source": "/api/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "X-XSS-Protection",
+          "value": "1; mode=block"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        }
+      ]
+    }
+  ],
+  "regions": ["iad1"],
+  "github": {
+    "autoAlias": false
+  }
 }

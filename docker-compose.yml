@@ -1,0 +1,126 @@
+# =====================================================
+# 🐳 DOCKER COMPOSE PARA DESARROLLO Y PRODUCCIÓN
+# =====================================================
+
+version: '3.8'
+
+services:
+  # Webhook principal
+  webhook:
+    build: .
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - LOG_LEVEL=info
+      - REDIS_URL=redis://redis:6379
+      - HUBSPOT_TOKEN=${HUBSPOT_TOKEN}
+      - HUBSPOT_OWNER_ID=${HUBSPOT_OWNER_ID}
+      - WEBHOOK_SECRET=${WEBHOOK_SECRET}
+      - RATE_LIMIT_MAX_REQUESTS=60
+      - CACHE_DEFAULT_TTL=1800000
+    depends_on:
+      - redis
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - webhook-network
+    volumes:
+      - ./logs:/app/logs
+
+  # Redis para cache persistente
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --maxmemory 256mb --maxmemory-policy allkeys-lru
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - webhook-network
+
+  # Nginx como reverse proxy (opcional)
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    depends_on:
+      - webhook
+    restart: unless-stopped
+    networks:
+      - webhook-network
+
+  # Monitoring con Prometheus (opcional)
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--storage.tsdb.retention.time=200h'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    networks:
+      - webhook-network
+
+  # Grafana para visualización (opcional)
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+    volumes:
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+    restart: unless-stopped
+    networks:
+      - webhook-network
+
+volumes:
+  redis-data:
+    driver: local
+  prometheus-data:
+    driver: local
+  grafana-data:
+    driver: local
+
+networks:
+  webhook-network:
+    driver: bridge
+
+# =====================================================
+# 🔧 CONFIGURACIÓN PARA DIFERENTES ENTORNOS
+# =====================================================
+
+# Para desarrollo local:
+# docker-compose up webhook redis
+
+# Para producción completa:
+# docker-compose up -d
+
+# Para solo testing:
+# docker-compose -f docker-compose.test.yml up

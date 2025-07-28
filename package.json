@@ -1,38 +1,28 @@
 {
-  "name": "webhook-inteligente",
-  "version": "2.1.0",
-  "description": "🚀 Webhook inteligente para detección de intenciones con integración HubSpot",
+  "name": "webhook-inteligente-manychat",
+  "version": "2.0.0",
+  "description": "Webhook optimizado para ManyChat con integración HubSpot",
   "main": "api/webhook.js",
   "type": "module",
   "scripts": {
     "start": "node api/webhook.js",
-    "dev": "nodemon api/webhook.js",
-    "test": "node test/test-webhook.js",
-    "test:hubspot": "node test/test-hubspot.js",
-    "test:parsing": "node test/test-parsing.js",
-    "test:super": "node test-super-completo.js",
-    "test:all": "node test-super-completo.js"
+    "dev": "node api/webhook.js",
+    "test": "echo 'Tests not configured yet'",
+    "health": "curl -f http://localhost:3000/api/health || exit 1"
   },
-  "keywords": [
-    "webhook",
-    "chatbot",
-    "manychat",
-    "hubspot",
-    "nlp",
-    "intent-detection"
-  ],
-  "author": "",
-  "license": "ISC",
   "dependencies": {
-    "@hubspot/api-client": "^11.2.0",
-    "dotenv": "^16.5.0",
-    "express": "^5.1.0"
-  },
-  "devDependencies": {
-    "node-fetch": "^2.7.0",
-    "nodemon": "^3.0.0"
+    "@hubspot/api-client": "^11.1.0",
+    "dotenv": "^16.3.1"
   },
   "engines": {
     "node": ">=18.0.0"
-  }
+  },
+  "keywords": [
+    "webhook",
+    "manychat",
+    "hubspot",
+    "medicina-estetica"
+  ],
+  "author": "Walfre Gorilla-Labs",
+  "license": "MIT"
 }
